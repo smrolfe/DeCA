@@ -164,6 +164,14 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     MeanWidgetLayout.addRow("Aligned landmark directory: ", self.meanLMDirectory)
 
     #
+    # Select output directory
+    #  
+    self.meanOutputDirectory=ctk.ctkPathLineEdit()
+    self.meanOutputDirectory.filters = ctk.ctkPathLineEdit.Dirs
+    self.meanOutputDirectory.setToolTip( "Select directory for mean output" )
+    MeanWidgetLayout.addRow("Mean output directory: ", self.meanOutputDirectory)
+    
+    #
     # Generate mean button
     #
     self.generateMeanButton = qt.QPushButton("Generate mean")
@@ -176,6 +184,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     #
     self.meanMeshDirectory.connect('validInputChanged(bool)', self.onMeanSelect)
     self.meanLMDirectory.connect('validInputChanged(bool)', self.onMeanSelect)
+    self.meanOutputDirectory.connect('validInputChanged(bool)', self.onMeanSelect)
     self.generateMeanButton.connect('clicked(bool)', self.onGenerateMean)
     
     ################################### DeCA Tab ###################################
@@ -235,7 +244,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     DeCAWidgetLayout.addRow("Use CPD registration: ", self.CPDCheckBox)
     
     #
-    # Use CPD registration
+    # Write directory for error checking
     #
     self.WriteErrorCheckBox = qt.QCheckBox()
     self.WriteErrorCheckBox.checked = False
@@ -339,11 +348,11 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
       self.landmarkDirectory.currentPath, self.alignedMeshDirectory.currentPath, self.alignedLMDirectory.currentPath)
   
   def onMeanSelect(self):
-    self.generateMeanButton.enabled = bool (self.meanMeshDirectory.currentPath and self.meanLMDirectory.currentPath)
+    self.generateMeanButton.enabled = bool (self.meanMeshDirectory.currentPath and self.meanLMDirectory.currentPath and self.meanOutputDirectory)
       
   def onGenerateMean(self):
     logic = DeCALogic()
-    logic.runMean(self.meanLMDirectory.currentPath, self.meanMeshDirectory.currentPath)
+    logic.runMean(self.meanLMDirectory.currentPath, self.meanMeshDirectory.currentPath, self.MeanOutputDirectory.currentPath)
   
   def onDCApplyButton(self):
     logic = DeCALogic()
@@ -372,6 +381,7 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     baseLandmarks=self.fiducialNodeToPolyData(baseLMPath).GetPoints()
     models = self.importMeshes(meshDirectory, 'ply')
     landmarks = self.importLandmarks(landmarkDirectory)
+    self.outputDirectory = outputDirectory
     if not(optionCPD):
       denseCorrespondenceGroup = self.denseCorrespondenceBaseMesh(landmarks, models, baseMesh, baseLandmarks, optionErrorOutput)
     else: 
@@ -379,7 +389,13 @@ class DeCALogic(ScriptedLoadableModuleLogic):
       
     self.addMagnitudeFeature(denseCorrespondenceGroup, baseMesh)
     
-  def runMean(self, landmarkDirectory, meshDirectory):
+    # save results to output directory
+    outputModelName = 'decaResultModel.vtp'
+    outputModelPath = os.path.join(outputDirectory, outputModelName) 
+    slicer.util.saveNode(baseMesh, outputModelPath)
+    
+    
+  def runMean(self, landmarkDirectory, meshDirectory, outputDirectory):
     models = self.importMeshes(meshDirectory, 'ply')
     landmarks = self.importLandmarks(landmarkDirectory)
     [denseCorrespondenceGroup, closestToMeanIndex] = self.denseCorrespondence(landmarks, models)
@@ -392,6 +408,15 @@ class DeCALogic(ScriptedLoadableModuleLogic):
      # compute mean landmarks
     averageLandmarkNode = self.computeAverageLM(landmarks)     
     averageLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(False)
+    
+    # save results to output directory
+    outputModelName = 'decaMeanModel.vtp'
+    outputModelPath = os.path.join(outputDirectory, outputModelName) 
+    slicer.util.saveNode(averageModelNode, outputModelPath)
+    
+    outputLMName = 'decaMeanModel.fcsv'
+    outputLMPath = os.path.join(outputDirectory, outputLMName) 
+    slicer.util.saveNode(averageLandmarkNode, outputLMPath)
     
   def runAlign(self, baseMeshPath, baseLMPath, meshDirectory, lmDirectory, ouputMeshDirectory, outputLMDirectory):
     targetPoints = vtk.vtkPoints()
@@ -553,7 +578,7 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     min_index, min_value = min(enumerate(procrustesDistances), key=operator.itemgetter(1))
     return min_index
     
-  def denseCorrespondence(self, originalLandmarks, originalMeshes, writeErrorOption):
+  def denseCorrespondence(self, originalLandmarks, originalMeshes, writeErrorOption=False):
     meanShape, alignedPoints = self.procrustesImposition(originalLandmarks, False)
     sampleNumber = alignedPoints.GetNumberOfBlocks()
     denseCorrespondenceGroup = vtk.vtkMultiBlockDataGroupFilter()
@@ -570,7 +595,7 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     denseCorrespondenceGroup.Update()
     return denseCorrespondenceGroup.GetOutput(), baseIndex
   
-  def denseCorrespondenceCPD(self, originalLandmarks, originalMeshes, baseMesh, baseLandmarks, writeErrorOption):
+  def denseCorrespondenceCPD(self, originalLandmarks, originalMeshes, baseMesh, baseLandmarks, writeErrorOption=False):
     meanShape, alignedPoints = self.procrustesImposition(originalLandmarks, False)
     sampleNumber = alignedPoints.GetNumberOfBlocks()
     denseCorrespondenceGroup = vtk.vtkMultiBlockDataGroupFilter()
@@ -690,12 +715,16 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     # write ouput
     if writeOption:
       plyWriterSubject = vtk.vtkPLYWriter()
-      plyWriterSubject.SetFileName("/Users/sararolfe/Dropbox/SlicerWorkspace/SMwSML/Data/UBC/DECAOut/" + iteration + ".ply")
+      plyName = iteration + ".ply"
+      plyPath = os.path.join(self.outputDirectory, plyName) 
+      plyWriterSubject.SetFileName(plyPath)
       plyWriterSubject.SetInputData(meanWarpedMesh)
       plyWriterSubject.Write()
     
       plyWriterBase = vtk.vtkPLYWriter()
-      plyWriterBase.SetFileName("/Users/sararolfe/Dropbox/SlicerWorkspace/SMwSML/Data/UBC/DECAOut/base.ply")
+      plyName = "base.ply"
+      plyPath = os.path.join(self.outputDirectory, plyName) 
+      plyWriterBase.SetFileName(plyPath)
       plyWriterBase.SetInputData(meanWarpedBase)
       plyWriterBase.Write()
     
