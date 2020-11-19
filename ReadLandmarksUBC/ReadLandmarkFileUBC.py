@@ -17,7 +17,7 @@ class ReadLandmarkFileUBC(ScriptedLoadableModule):
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "ReadLandmarkFileUBC" # TODO make this more human readable by adding spaces
-    self.parent.categories = ["SlicerMorph.DeCA Toolbox"]
+    self.parent.categories = ["DeCA Toolbox"]
     self.parent.dependencies = []
     self.parent.contributors = ["Sara Rolfe (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """

@@ -79,6 +79,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     # Select base mesh
     #
     self.baseMeshSelector = ctk.ctkPathLineEdit()
+    self.baseMeshSelector.filters  = ctk.ctkPathLineEdit().Files
     self.baseMeshSelector.nameFilters=["*.ply"]
     alignWidgetLayout.addRow("Base model: ", self.baseMeshSelector)
     
@@ -86,6 +87,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     # Select base landmarks
     #
     self.baseLMSelector = ctk.ctkPathLineEdit()
+    self.baseLMSelector.filters  = ctk.ctkPathLineEdit().Files
     self.baseLMSelector.nameFilters=["*.fcsv"]
     alignWidgetLayout.addRow("Base landmarks: ", self.baseLMSelector)
 
@@ -350,7 +352,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
       
   def onGenerateMean(self):
     logic = DeCALogic()
-    logic.runMean(self.meanLMDirectory.currentPath, self.meanMeshDirectory.currentPath, self.MeanOutputDirectory.currentPath)
+    logic.runMean(self.meanLMDirectory.currentPath, self.meanMeshDirectory.currentPath, self.meanOutputDirectory.currentPath)
   
   def onDCApplyButton(self):
     logic = DeCALogic()
@@ -375,7 +377,8 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     """
     
   def runDCAlign(self, baseMeshPath, baseLMPath, meshDirectory, landmarkDirectory, outputDirectory, optionCPD, optionErrorOutput):
-    baseMesh= slicer.util.loadModel(baseMeshPath).GetPolyData()
+    baseNode = slicer.util.loadModel(baseMeshPath)
+    baseMesh = baseNode.GetPolyData()
     baseLandmarks=self.fiducialNodeToPolyData(baseLMPath).GetPoints()
     models = self.importMeshes(meshDirectory, 'ply')
     landmarks = self.importLandmarks(landmarkDirectory)
@@ -390,7 +393,7 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     # save results to output directory
     outputModelName = 'decaResultModel.vtp'
     outputModelPath = os.path.join(outputDirectory, outputModelName) 
-    slicer.util.saveNode(baseMesh, outputModelPath)
+    slicer.util.saveNode(baseNode, outputModelPath)
     
     
   def runMean(self, landmarkDirectory, meshDirectory, outputDirectory):
@@ -408,7 +411,7 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     averageLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(False)
     
     # save results to output directory
-    outputModelName = 'decaMeanModel.vtp'
+    outputModelName = 'decaMeanModel.ply'
     outputModelPath = os.path.join(outputDirectory, outputModelName) 
     slicer.util.saveNode(averageModelNode, outputModelPath)
     
