@@ -84,7 +84,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     #
     self.baseMeshSelector = ctk.ctkPathLineEdit()
     self.baseMeshSelector.filters  = ctk.ctkPathLineEdit().Files
-    self.baseMeshSelector.nameFilters=["*.stl"]
+    self.baseMeshSelector.nameFilters=["Model (*.ply *.stl *.obj *.vtk *.vtp)"]
     alignWidgetLayout.addRow("Base model: ", self.baseMeshSelector)
     
     #
@@ -203,7 +203,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     #
     self.DCBaseModelSelector = ctk.ctkPathLineEdit()
     self.DCBaseModelSelector.filters  = ctk.ctkPathLineEdit().Files
-    self.DCBaseModelSelector.nameFilters=["*.ply"]
+    self.DCBaseModelSelector.nameFilters=["Model (*.ply *.stl *.obj *.vtk *.vtp)"]
     DeCAWidgetLayout.addRow("Base mesh: ", self.DCBaseModelSelector)
     
     #
@@ -479,7 +479,8 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
       
   def onGenerateMean(self):
     logic = DeCALogic()
-    logic.runMean(self.meanLMDirectory.currentPath, self.meanMeshDirectory.currentPath, self.meanOutputDirectory.currentPath)
+    base, modelExt = os.path.splitext(self.baseMeshSelector.currentPath)
+    logic.runMean(self.meanLMDirectory.currentPath, self.meanMeshDirectory.currentPath, modelExt, self.meanOutputDirectory.currentPath)
   
   def onDCApplyButton(self):
     logic = DeCALogic()
@@ -612,7 +613,8 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     baseNode = slicer.util.loadModel(baseMeshPath)
     baseMesh = baseNode.GetPolyData()
     baseLandmarks=self.fiducialNodeToPolyData(baseLMPath).GetPoints()
-    models = self.importMeshes(meshDirectory, 'ply')
+    base, modelExt = os.path.splitext(baseMeshPath)
+    models = self.importMeshes(meshDirectory, modelExt)
     landmarks = self.importLandmarks(landmarkDirectory)
     self.outputDirectory = outputDirectory
     if not(optionCPD):
@@ -631,9 +633,10 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     baseNode = slicer.util.loadModel(baseMeshPath)
     baseMesh = baseNode.GetPolyData()
     baseLandmarks=self.fiducialNodeToPolyData(baseLMPath).GetPoints()
-    models = self.importMeshes(meshDir, 'ply')
+    base, modelExt = os.path.splitext(baseMeshPath)
+    models = self.importMeshes(meshDir, modelExt)
     landmarks = self.importLandmarks(landmarkDir)
-    mirrorModels = self.importMeshes(mirrorMeshDir, 'ply')
+    mirrorModels = self.importMeshes(mirrorMeshDir, modelExt)
     mirrorLandmarks = self.importLandmarks(mirrorLandmarkDir)
     self.outputDirectory = outputDir
     if not(optionCPD):
@@ -651,8 +654,8 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     outputModelPath = os.path.join(outputDir, outputModelName) 
     slicer.util.saveNode(baseNode, outputModelPath)
       
-  def runMean(self, landmarkDirectory, meshDirectory, outputDirectory):
-    models = self.importMeshes(meshDirectory, 'ply')
+  def runMean(self, landmarkDirectory, meshDirectory, modelExt, outputDirectory):
+    models = self.importMeshes(meshDirectory, modelExt)
     landmarks = self.importLandmarks(landmarkDirectory)
     [denseCorrespondenceGroup, closestToMeanIndex] = self.denseCorrespondence(landmarks, models)
     print("Sample closest to mean: ", closestToMeanIndex)
