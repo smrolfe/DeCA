@@ -3,1897 +3,737 @@ import unittest
 import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 import logging
+import fnmatch
+import  numpy as np
+import random
 import math
 
 import re
 import csv
-import glob
-import fnmatch
-
-import Support.vtk_lib as vtk_lib
-import Support.gpa_lib as gpa_lib
-import  numpy as np
-from datetime import datetime
+import vtk.util.numpy_support as vtk_np
 
 #
-# GPA
+# DeCA
 #
-#define global variable for node management
-GPANodeCollection=vtk.vtkCollection() #collect nodes created by module
 
-class GPA(ScriptedLoadableModule):
+class DeCA(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
-  https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-  """
-
+    https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
+    """
+  
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
-    self.parent.title = "GPA" # TODO make this more human readable by adding spaces
-    self.parent.categories = ["SlicerMorph.Geometric Morphometrics"]
+    self.parent.title = "DeCA" # TODO make this more human readable by adding spaces
+    self.parent.categories = ["DeCA Toolbox"]
     self.parent.dependencies = []
-    self.parent.contributors = [" Sara Rolfe (UW), Murat Maga (UW)"] # replace with "Firstname Lastname (Organization)"
+    self.parent.contributors = ["Sara Rolfe (UW)"] # replace with "Firstname Lastname (Organization)"
     self.parent.helpText = """
-This module preforms standard Generalized Procrustes Analysis (GPA) based on (citation)
-<p>For more information see the <a href="https://github.com/SlicerMorph/SlicerMorph/tree/master/Docs/GPA">online documentation.</a>.</p>
-"""
-    #self.parent.helpText += self.getDefaultModuleDocumentationLink()
+      This module provides several flexible workflows for finding and analyzing dense correspondence points between models.
+      """
+    self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
-      This module was developed by Sara Rolfe, and Murat Maga for SlicerMorph. SlicerMorph was originally supported by an NSF/DBI grant, "An Integrated Platform for Retrieval, Visualization and Analysis of 3D Morphology From Digital Biological Collections" 
-      awarded to Murat Maga (1759883), Adam Summers (1759637), and Douglas Boyer (1759839). 
-      https://nsf.gov/awardsearch/showAward?AWD_ID=1759883&HistoricalAwards=false
-""" # replace with organization, grant and thanks.
-
-# Define custom layouts for GPA modules in slicer global namespace
-    slicer.customLayoutSM = """
-      <layout type=\"vertical\" split=\"true\" >
-       <item splitSize=\"500\">
-         <layout type=\"horizontal\">
-           <item>
-            <view class=\"vtkMRMLViewNode\" singletontag=\"1\">
-             <property name=\"viewlabel\" action=\"default\">1</property>
-            </view>
-           </item>
-           <item>
-            <view class=\"vtkMRMLViewNode\" singletontag=\"2\" type=\"secondary\">"
-             <property name=\"viewlabel\" action=\"default\">2</property>"
-            </view>
-          </item>
-         </layout>
-       </item>
-       <item splitSize=\"500\">
-        <layout type=\"horizontal\">
-         <item>
-          <view class=\"vtkMRMLSliceNode\" singletontag=\"Red\">
-           <property name=\"orientation\" action=\"default\">Axial</property>
-           <property name=\"viewlabel\" action=\"default\">R</property>
-           <property name=\"viewcolor\" action=\"default\">#F34A33</property>
-          </view>
-         </item>
-           <item>
-            <view class=\"vtkMRMLPlotViewNode\" singletontag=\"PlotViewerWindow_1\">
-             <property name=\"viewlabel\" action=\"default\">1</property>
-            </view>
-           </item>
-         <item>
-          <view class=\"vtkMRMLTableViewNode\" singletontag=\"TableViewerWindow_1\">"
-           <property name=\"viewlabel\" action=\"default\">T</property>"
-          </view>"
-         </item>"
-        </layout>
-       </item>
-      </layout>
-  """
-
-    slicer.customLayoutTableOnly = """
-      <layout type=\"horizontal\" >
-       <item>
-        <view class=\"vtkMRMLTableViewNode\" singletontag=\"TableViewerWindow_1\">"
-         <property name=\"viewlabel\" action=\"default\">T</property>"
-        </view>"
-       </item>"
-      </layout>
-  """
-  
-    slicer.customLayoutPlotOnly = """
-      <layout type=\"horizontal\" >
-       <item>
-        <view class=\"vtkMRMLPlotViewNode\" singletontag=\"PlotViewerWindow_1\">
-         <property name=\"viewlabel\" action=\"default\">1</property>
-        </view>"
-       </item>"
-      </layout>
-  """
+      
+      """ # replace with organization, grant and thanks.
 
 #
-# GPAWidget
+# DeCAWidget
 #
-class sliderGroup(qt.QGroupBox):
-  def setValue(self, value):
-        self.slider.setValue(value)
 
-  def connectList(self,mylist):
-    self.list=mylist
-
-  def populateComboBox(self, boxlist):
-    self.comboBox.clear()
-    for i in boxlist:
-        self.comboBox.addItem(i)
-
-  def setLabelTest(self,i):
-    j=str(i)
-    self.label.setText(j)
-
-  def boxValue(self):
-    tmp=self.comboBox.currentIndex
-    return tmp
-
-  def sliderValue(self):
-    tmp=self.spinBox.value
-    return tmp
-
-  def clear(self):
-    self.spinBox.setValue(0)
-    self.comboBox.clear()
-
-  def __init__(self, parent=None, onChanged=None):
-    super(sliderGroup, self).__init__( parent)
-
-    # slider
-    self.slider = qt.QSlider(qt.Qt.Horizontal)
-    self.slider.setTickPosition(qt.QSlider.TicksBothSides)
-    self.slider.setTickInterval(10)
-    self.slider.setSingleStep(1)
-    self.slider.setMaximum(100)
-    self.slider.setMinimum(-100)
-
-    # combo box to be populated with list of PC values
-    self.comboBox=qt.QComboBox()
-
-    # spin box to display scaling
-    self.spinBox=qt.QSpinBox()
-    self.spinBox.setMaximum(100)
-    self.spinBox.setMinimum(-100)
-
-    # connect to each other
-    self.slider.valueChanged.connect(self.spinBox.setValue)
-    self.spinBox.valueChanged.connect(self.slider.setValue)
-    if onChanged:
-      self.slider.valueChanged.connect(onChanged)
-      self.comboBox.currentIndexChanged.connect(onChanged)
-
-    # layout
-    slidersLayout = qt.QGridLayout()
-    slidersLayout.addWidget(self.slider,1,2)
-    slidersLayout.addWidget(self.comboBox,1,1)
-    slidersLayout.addWidget(self.spinBox,1,3)
-    self.setLayout(slidersLayout)
-
-class LMData:
-  def __init__(self):
-    self.lm=0
-    self.lmOrig=0
-    self.val=0
-    self.vec=0
-    self.alignCoords=0
-    self.mShape=0
-    self.tangentCoord=0
-    self.shift=0
-    self.centriodSize=0
-
-  def initializeFromDataFrame(self, outputData, meanShape, eigenVectors, eigenValues):
-    try:
-      self.centriodSize = outputData.centeroid.to_numpy()
-      self.centriodSize=self.centriodSize.reshape(-1,1)
-      LMHeaders = [name for name in outputData.columns if 'LM ' in name]
-      points = outputData[LMHeaders].to_numpy().transpose()
-      self.lm = points.reshape(int(points.shape[0]/3), 3, -1, order='F')
-      self.lmOrig = self.lm
-      self.mShape = meanShape[['X','Y','Z']].to_numpy()
-      self.val = eigenValues.Scores.to_numpy()
-      vectors = [name for name in eigenVectors.columns if 'PC ' in name]
-      self.vec = eigenVectors[vectors].to_numpy()
-      print("mShape shape", self.mShape.shape)
-      self.procdist=gpa_lib.procDist(self.lm, self.mShape)
-      self.procdist=self.procdist.reshape(-1,1)
-      return 1
-    except:
-      print("Error loading results")
-      return 0
-    
-      
-  def calcLMVariation(self, SampleScaleFactor, skipScalingCheckBox):
-    i,j,k=self.lmOrig.shape
-    varianceMat=np.zeros((i,j))
-    for subject in range(k):
-      tmp=pow((self.lmOrig[:,:,subject]-self.mShape),2)
-      varianceMat=varianceMat+tmp
-    # if GPA scaling has been skipped, don't apply image size scaling factor
-    if(skipScalingCheckBox):
-      varianceMat = np.sqrt(varianceMat/(k-1))
-    else:
-      varianceMat = SampleScaleFactor*np.sqrt(varianceMat/(k-1))
-    return varianceMat
-
-  def doGpa(self,skipScalingCheckBox):
-    i,j,k=self.lmOrig.shape
-    self.centriodSize=np.zeros(k)
-    for i in range(k):
-      self.centriodSize[i]=np.linalg.norm(self.lmOrig[:,:,i]-self.lmOrig[:,:,i].mean(axis=0))
-    if skipScalingCheckBox:
-      print("Skipping Scaling")
-      self.lm, self.mShape=gpa_lib.doGPANoScale(self.lmOrig)
-    else:
-      self.lm, self.mShape=gpa_lib.doGPA(self.lmOrig)
-
-  def calcEigen(self):
-    twoDim=gpa_lib.makeTwoDim(self.lm)
-    covMatrix=gpa_lib.calcCov(twoDim)
-    self.val, self.vec=np.linalg.eig(covMatrix)
-    self.vec=np.real(self.vec)
-    # scale eigen Vectors
-    i,j =self.vec.shape
-
-
-  def ExpandAlongPCs(self, numVec,scaleFactor,SampleScaleFactor):
-    b=0
-    i,j,k=self.lm.shape
-    tmp=np.zeros((i,j))
-    points=np.zeros((i,j))
-    self.vec=np.real(self.vec)
-    # scale eigenvector
-    for y in range(len(numVec)):
-      if numVec[y] is not 0:
-        pcComponent = numVec[y] - 1
-        tmp[:,0]=tmp[:,0]+float(scaleFactor[y])*self.vec[0:i,pcComponent]*SampleScaleFactor/3
-        tmp[:,1]=tmp[:,1]+float(scaleFactor[y])*self.vec[i:2*i,pcComponent]*SampleScaleFactor/3
-        tmp[:,2]=tmp[:,2]+float(scaleFactor[y])*self.vec[2*i:3*i,pcComponent]*SampleScaleFactor/3
-
-    self.shift=tmp
-
-  def writeOutData(self,outputFolder,files):
- # make headers for eigenvector matrix
-    headerPC=[]
-    headerLM=[""]
-    for i in range(self.vec.shape[0]):
-      headerPC.append("PC "+str(i+1))
-    for i in range(int(self.vec.shape[0]/3)):
-      headerLM.append("LM "+str(i+1)+"_X")
-      headerLM.append("LM "+str(i+1)+"_Y")
-      headerLM.append("LM "+str(i+1)+"_Z")
-
-    temp = np.vstack((np.array(headerPC),self.vec))
-    temp = np.column_stack((np.array(headerLM),temp))
-    np.savetxt(outputFolder+os.sep+"eigenvector.csv", temp, delimiter=",",fmt='%s')
-    temp = np.column_stack((np.array(headerPC),self.val))
-    np.savetxt(outputFolder+os.sep+"eigenvalues.csv", temp, delimiter=",",fmt='%s')
-
-    headerLM=[]
-    headerCoordinate = ["","X","Y","Z"]
-    for i in range(len(self.mShape)):
-      headerLM.append("LM " +str(i+1))
-    temp = np.column_stack((np.array(headerLM),self.mShape))
-    temp = np.vstack((np.array(headerCoordinate),temp))
-    np.savetxt(outputFolder+os.sep+"MeanShape.csv", temp, delimiter=",",fmt='%s')
-
-    percentVar=self.val/self.val.sum()
-    print("lm shape", self.lm.shape)
-    print("mShape shape", self.mShape.shape)
-    self.procdist=gpa_lib.procDist(self.lm, self.mShape)
-    files=np.array(files)
-    i=files.shape
-    files=files.reshape(i[0],1)
-    k,j,i=self.lmOrig.shape
-
-    coords=gpa_lib.makeTwoDim(self.lm)
-    self.procdist=self.procdist.reshape(i,1)
-    self.centriodSize=self.centriodSize.reshape(i,1)
-    tmp=np.column_stack((files, self.procdist, self.centriodSize, np.transpose(coords)))
-    header=np.array(['Sample_name','proc_dist','centeroid'])
-    i1,j=tmp.shape
-    coodrsL=(j-3)/3.0
-    l=np.zeros(int(3*coodrsL))
-
-    l=list(l)
-
-    for x in range(int(coodrsL)):
-      loc=x+1
-      l[3*x]="LM " +str(loc) + "_X"
-      l[3*x+1]="LM " +str(loc) + "_Y"
-      l[3*x+2]="LM " +str(loc) + "_Z"
-    l=np.array(l)
-    header=np.column_stack((header.reshape(1,3),l.reshape(1,int(3*coodrsL))))
-    tmp1=np.vstack((header,tmp))
-    np.savetxt(outputFolder+os.sep+"OutputData.csv", tmp1, fmt="%s" , delimiter=",")
-
-    # calc PC scores
-    twoDcoors=gpa_lib.makeTwoDim(self.lm)
-    scores=np.dot(np.transpose(twoDcoors),self.vec)
-    scores=np.real(scores)
-    headerPC.insert(0,"Sample_name")
-    temp=np.column_stack((files.reshape(i,1),scores))
-    temp=np.vstack((headerPC,temp))
-    np.savetxt(outputFolder+os.sep+"pcScores.csv", temp, fmt="%s", delimiter=",")
-
-  def closestSample(self,files):
-    import operator
-    min_index, min_value = min(enumerate(self.procdist), key=operator.itemgetter(1))
-    tmp=files[min_index]
-    return tmp
-
-  def calcEndpoints(self,LM,pc, scaleFactor, MonsterObj):
-    i,j=LM.shape
-    tmp=np.zeros((i,j))
-    tmp[:,0]=self.vec[0:i,pc]
-    tmp[:,1]=self.vec[i:2*i,pc]
-    tmp[:,2]=self.vec[2*i:3*i,pc]
-    return LM+tmp*scaleFactor/3.0
-
-class GPAWidget(ScriptedLoadableModuleWidget):
-  """Uses ScriptedLoadableModuleWidget base class, available at: https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-  """
-  def assignLayoutDescription(self):
-   
-    customLayoutId1=500
-    layoutManager = slicer.app.layoutManager()
-    layoutManager.setLayout(customLayoutId1)
-
-    #link whatever is in the 3D views
-    viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1") #name = "View"+ singletonTag
-    viewNode2 = slicer.mrmlScene.GetFirstNodeByName("View2")
-    viewNode1.SetAxisLabelsVisible(False)
-    viewNode2.SetAxisLabelsVisible(False)
-    viewNode1.SetLinkedControl(True)
-    viewNode2.SetLinkedControl(True)
-    
-    # Assign nodes to appropriate views
-    redNode = layoutManager.sliceWidget('Red').sliceView().mrmlSliceNode()
-    self.meanLandmarkNode.GetDisplayNode().SetViewNodeIDs([viewNode1.GetID(),redNode.GetID()])
-    if hasattr(self, 'cloneLandmarkDisplayNode'):
-      self.cloneLandmarkDisplayNode.SetViewNodeIDs([viewNode2.GetID()])
-    
-    # check for loaded reference model
-    if hasattr(self, 'modelDisplayNode'):
-      self.modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
-    if hasattr(self, 'cloneModelDisplayNode'):
-      self.cloneModelDisplayNode.SetViewNodeIDs([viewNode2.GetID()])
-    
-    # fit the red slice node to show the plot projections
-    rasBounds = [0,]*6
-    self.meanLandmarkNode.GetRASBounds(rasBounds)
-      
-    redNode.GetSliceToRAS().SetElement(0, 3, (rasBounds[1]+rasBounds[0]) / 2.)
-    redNode.GetSliceToRAS().SetElement(1, 3, (rasBounds[3]+rasBounds[2]) / 2.)
-    redNode.GetSliceToRAS().SetElement(2, 3, (rasBounds[5]+rasBounds[4]) / 2.)
-    rSize = rasBounds[1]-rasBounds[0]
-    aSize = rasBounds[3]-rasBounds[2]
-    dimensions = redNode.GetDimensions()
-    aspectRatio = float(dimensions[0]) / float(dimensions[1])
-    if rSize > aSize:
-      redNode.SetFieldOfView(rSize, rSize/aspectRatio, 1.)
-    else:
-      redNode.SetFieldOfView(aSize*aspectRatio, aSize, 1.)
-    redNode.UpdateMatrices()
-    
-    # reset 3D cameras
-    threeDWidget = layoutManager.threeDWidget(0)
-    if bool(threeDWidget.name == 'ThreeDWidget1'):
-      threeDView = threeDWidget.threeDView()
-      threeDView.resetFocalPoint()
-      threeDView.resetCamera()
-    else:
-      threeDWidget  = layoutManager.threeDWidget(1)
-      threeDView = threeDWidget.threeDView()
-      threeDView.resetFocalPoint()
-      threeDView.resetCamera()
-
-  def textIn(self,label, dispText, toolTip):
-    """ a function to set up the appearnce of a QlineEdit widget.
-    the widget is returned.
+class DeCAWidget(ScriptedLoadableModuleWidget):
+  """Uses ScriptedLoadableModuleWidget base class, available at:
+    https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-    # set up text line
-    textInLine=qt.QLineEdit();
-    textInLine.setText(dispText)
-    textInLine.toolTip = toolTip
-    # set up label
-    lineLabel=qt.QLabel()
-    lineLabel.setText(label)
-
-    # make clickable button
-    button=qt.QPushButton("..")
-    return textInLine, lineLabel, button
-
-  def selectLandmarkFile(self):
-    self.LM_dir_name=qt.QFileDialog().getExistingDirectory()
-    self.LMText.setText(self.LM_dir_name)
-    try:
-      self.loadButton.enabled = bool (self.LM_dir_name and self.outputDirectory)
-    except AttributeError:
-      self.loadButton.enabled = False
-
-  def selectResultsDirectory(self):
-    self.resultsDirectory=qt.QFileDialog().getExistingDirectory()
-    self.resultsText.setText(self.resultsDirectory)
-    try:
-      self.loadResultsButton.enabled = bool (self.resultsDirectory)
-    except AttributeError:
-      self.loadResultsButton.enabled = False
-      
-  def selectOutputDirectory(self):
-    self.outputDirectory=qt.QFileDialog().getExistingDirectory()
-    self.outText.setText(self.outputDirectory)
-    try:
-      self.loadButton.enabled = bool (self.LM_dir_name and self.outputDirectory)
-    except AttributeError:
-      self.loadButton.enabled = False
-  def updateList(self):
-    i,j,k=self.LM.lm.shape
-    self.PCList=[]
-    self.slider1.populateComboBox(self.PCList)
-    self.slider2.populateComboBox(self.PCList)
-    self.PCList.append('None')
-    self.LM.val=np.real(self.LM.val)
-    percentVar=self.LM.val/self.LM.val.sum()
-    self.vectorOne.clear()
-    self.vectorTwo.clear()
-    self.vectorThree.clear()
-    self.XcomboBox.clear()
-    self.XcomboBox.clear()
-    self.YcomboBox.clear()
-
-    self.vectorOne.addItem('None')
-    self.vectorTwo.addItem('None')
-    self.vectorThree.addItem('None')
-    if len(percentVar)<self.pcNumber:
-      self.pcNumber=len(percentVar)
-    for x in range(self.pcNumber):
-      tmp="{:.1f}".format(percentVar[x]*100)
-      string='PC '+str(x+1)+': '+str(tmp)+"%" +" var"
-      self.PCList.append(string)
-      self.XcomboBox.addItem(string)
-      self.YcomboBox.addItem(string)
-      self.vectorOne.addItem(string)
-      self.vectorTwo.addItem(string)
-      self.vectorThree.addItem(string)
-
-  
-  def onLoadFromFile(self):
-    self.initializeOnLoad() #clean up module from previous runs
-    logic = GPALogic()
-    import pandas
-    
-    # Load data
-    outputDataPath = os.path.join(self.resultsDirectory, 'OutputData.csv')
-    meanShapePath = os.path.join(self.resultsDirectory, 'MeanShape.csv')
-    eigenVectorPath = os.path.join(self.resultsDirectory, 'eigenvector.csv')
-    eigenValuePath = os.path.join(self.resultsDirectory, 'eigenvalues.csv')
-    eigenValueNames = ['Index', 'Scores']
-    try:
-      eigenValues = pandas.read_csv(eigenValuePath, names=eigenValueNames)
-      eigenVector = pandas.read_csv(eigenVectorPath)
-      meanShape = pandas.read_csv(meanShapePath)
-      outputData = pandas.read_csv(outputDataPath)
-    except:
-      logging.debug('Result import failed: Missing file')
-      return
-    
-    # Try to load skip scaling option from log file, if present
-    self.skipScalingOption = False
-    logFilePath = os.path.join(self.resultsDirectory, 'analysis.log')
-    try:
-      with open(logFilePath) as f:
-        if 'Scale=False' in f.read():
-          self.skipScalingOption = True
-    except:
-      logging.debug('Log import failed: Cannot read scaling option from log file')
-    print("Skip Scale option: ", self.skipScalingOption)
-    # Initialize variables
-    self.LM=LMData() 
-    success = self.LM.initializeFromDataFrame(outputData, meanShape, eigenVector, eigenValues)
-    if not success:
-      return
-      
-    self.files = outputData.Sample_name.tolist()
-    shape = self.LM.lmOrig.shape
-    print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
-    
-    # GPA parameters
-    self.pcNumber=25
-    self.updateList()
-    
-    # get mean landmarks as a fiducial node
-    self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
-    if self.meanLandmarkNode is None:
-      self.meanLandmarkNode = slicer.vtkMRMLMarkupsFiducialNode()
-      self.meanLandmarkNode.SetName('Mean Landmark Node')
-      slicer.mrmlScene.AddNode(self.meanLandmarkNode)
-      GPANodeCollection.AddItem(self.meanLandmarkNode)
-      modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
-      GPANodeCollection.AddItem(modelDisplayNode)
-    self.meanLandmarkNode.GetDisplayNode().SetSliceProjection(True)
-    self.meanLandmarkNode.GetDisplayNode().SetSliceProjectionOpacity(1)
-      
-    #set scaling factor using mean of landmarks
-    self.rawMeanLandmarks = self.LM.lmOrig.mean(2)
-    logic = GPALogic()
-    self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
-    print("Scale Factor: " + str(self.sampleSizeScaleFactor))
-    
-    # get mean landmarks as a fiducial node
-    self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
-    if self.meanLandmarkNode is None:
-      self.meanLandmarkNode = slicer.vtkMRMLMarkupsFiducialNode()
-      self.meanLandmarkNode.SetName('Mean Landmark Node')
-      slicer.mrmlScene.AddNode(self.meanLandmarkNode)
-      GPANodeCollection.AddItem(self.meanLandmarkNode)
-      modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
-      GPANodeCollection.AddItem(modelDisplayNode)
-      
-    for landmarkNumber in range (shape[0]):
-      name = str(landmarkNumber+1) #start numbering at 1
-      self.meanLandmarkNode.AddFiducialFromArray(self.rawMeanLandmarks[landmarkNumber,:], name)
-    self.meanLandmarkNode.SetDisplayVisibility(1) 
-    self.meanLandmarkNode.LockedOn() #lock position so when displayed they cannot be moved
-    #initialize mean LM display
-    self.scaleMeanGlyph()
-    self.toggleMeanColor()  
-    # Set up cloned mean landmark node for pc warping
-    shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-    itemIDToClone = shNode.GetItemByDataNode(self.meanLandmarkNode)
-    clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
-    self.copyLandmarkNode = shNode.GetItemDataNode(clonedItemID)
-    GPANodeCollection.AddItem(self.copyLandmarkNode)
-    self.copyLandmarkNode.SetName('PC Warped Landmarks')
-    self.copyLandmarkNode.SetDisplayVisibility(0)
-    
-    #set up procrustes distance plot
-    filename=self.LM.closestSample(self.files)
-    self.populateDistanceTable(self.files)
-    print("Closest sample to mean:" + filename)
-    
-    #Setup for scatter plots 
-    shape = self.LM.lm.shape
-    self.scatterDataAll= np.zeros(shape=(shape[2],self.pcNumber))    
-    for i in range(self.pcNumber):
-      data=gpa_lib.plotTanProj(self.LM.lm,i,1)
-      self.scatterDataAll[:,i] = data[:,0]
-
-    # Set up layout
-    self.assignLayoutDescription()
-    # Apply zoom for morphospace if scaling not skipped
-    if(not self.skipScalingOption):
-      cameras=slicer.mrmlScene.GetNodesByClass('vtkMRMLCameraNode')
-      self.widgetZoomFactor = 2000*self.sampleSizeScaleFactor
-      for camera in cameras:
-        camera.GetCamera().Zoom(self.widgetZoomFactor)
-    
-    #initialize mean LM display
-    self.scaleMeanGlyph()
-    self.toggleMeanColor()
-
-    # Enable buttons for workflow
-    self.plotButton.enabled = True
-    self.lolliButton.enabled = True
-    self.plotDistributionButton.enabled = True
-    self.plotMeanButton3D.enabled = True
-    self.showMeanLabelsButton.enabled = True
-    self.selectorButton.enabled = True
-    self.landmarkVisualizationType.enabled = True
-    self.modelVisualizationType.enabled = True
-       
-  def onLoad(self):
-    self.initializeOnLoad() #clean up module from previous runs
-    logic = GPALogic()
-
-    # get landmarks
-    self.LM=LMData()    
-    lmToExclude=self.excludeLMText.text
-    if len(lmToExclude) != 0:
-      self.LMExclusionList=lmToExclude.split(",")
-      print("Excluded landmarks: ", self.LMExclusionList)
-      self.LMExclusionList=[np.int(x) for x in self.LMExclusionList]
-      lmNP=np.asarray(self.LMExclusionList)
-    else:
-      self.LMExclusionList=[]
-    try:
-      self.LM.lmOrig, self.files, self.isJSON = logic.mergeMatchs(self.LM_dir_name, self.LMExclusionList)
-    except: 
-      logging.debug('Load landmark data failed: Could not access files')
-      print("Error reading landmark files")
-      return
-      
-    shape = self.LM.lmOrig.shape
-    print('Loaded ' + str(shape[2]) + ' subjects with ' + str(shape[0]) + ' landmark points.')
-    
-    # Do GPA
-    self.skipScalingOption=self.skipScalingCheckBox.checked
-    self.LM.doGpa(self.skipScalingOption)
-    self.LM.calcEigen()
-    self.pcNumber=25
-    self.updateList()
-    
-    #set scaling factor using mean of landmarks
-    self.rawMeanLandmarks = self.LM.lmOrig.mean(2)
-    logic = GPALogic()
-    self.sampleSizeScaleFactor = logic.dist2(self.rawMeanLandmarks).max()
-    print("Scale Factor: " + str(self.sampleSizeScaleFactor))
-
-    # get mean landmarks as a fiducial node
-    self.meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
-    if self.meanLandmarkNode is None:
-      self.meanLandmarkNode = slicer.vtkMRMLMarkupsFiducialNode()
-      self.meanLandmarkNode.SetName('Mean Landmark Node')
-      slicer.mrmlScene.AddNode(self.meanLandmarkNode)
-      GPANodeCollection.AddItem(self.meanLandmarkNode)
-      modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
-      GPANodeCollection.AddItem(modelDisplayNode)
-    self.meanLandmarkNode.GetDisplayNode().SetSliceProjection(True)
-    self.meanLandmarkNode.GetDisplayNode().SetSliceProjectionOpacity(1)
-
-    for landmarkNumber in range (shape[0]):
-      name = str(landmarkNumber+1) #start numbering at 1
-      self.meanLandmarkNode.AddFiducialFromArray(self.rawMeanLandmarks[landmarkNumber,:], name)
-    self.meanLandmarkNode.SetDisplayVisibility(1) 
-    self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1)
-    self.meanLandmarkNode.GetDisplayNode().SetTextScale(3)
-    self.meanLandmarkNode.LockedOn() #lock position so when displayed they cannot be moved
-
-    # Set up cloned mean landmark node for pc warping
-    shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-    itemIDToClone = shNode.GetItemByDataNode(self.meanLandmarkNode)
-    clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
-    self.copyLandmarkNode = shNode.GetItemDataNode(clonedItemID)
-    GPANodeCollection.AddItem(self.copyLandmarkNode)
-    self.copyLandmarkNode.SetName('PC Warped Landmarks')
-    self.copyLandmarkNode.SetDisplayVisibility(0)
-    
-    # Set up output
-    dateTimeStamp = datetime.now().strftime('%Y-%m-%d_%H_%M_%S')
-    self.outputFolder = os.path.join(self.outputDirectory, dateTimeStamp)
-    try:
-      os.makedirs(self.outputFolder)
-      self.LM.writeOutData(self.outputFolder, self.files)
-      self.writeAnalysisLogFile(self.LM_dir_name, self.outputFolder, self.files)
-    except:
-      logging.debug('Result directory failed: Could not access output folder')
-      print("Error creating result directory")
-        
-    # Get closest sample to mean
-    filename=self.LM.closestSample(self.files)
-    self.populateDistanceTable(self.files)
-    print("Closest sample to mean:" + filename)
-    
-    #Setup for scatter plots 
-    shape = self.LM.lm.shape
-    self.scatterDataAll= np.zeros(shape=(shape[2],self.pcNumber))    
-    for i in range(self.pcNumber):
-      data=gpa_lib.plotTanProj(self.LM.lm,i,1)
-      self.scatterDataAll[:,i] = data[:,0]
-
-    # Set up layout
-    self.assignLayoutDescription()
-    # Apply zoom for morphospace if scaling not skipped
-    if(not self.skipScalingOption):
-      cameras=slicer.mrmlScene.GetNodesByClass('vtkMRMLCameraNode')
-      self.widgetZoomFactor = 2000*self.sampleSizeScaleFactor
-      for camera in cameras:
-        camera.GetCamera().Zoom(self.widgetZoomFactor)
-    
-    #initialize mean LM display
-    self.scaleMeanGlyph()
-    self.toggleMeanColor()
-
-    # Enable buttons for workflow
-    self.plotButton.enabled = True
-    self.lolliButton.enabled = True
-    self.plotDistributionButton.enabled = True
-    self.plotMeanButton3D.enabled = True
-    self.showMeanLabelsButton.enabled = True
-    self.selectorButton.enabled = True
-    self.landmarkVisualizationType.enabled = True
-    self.modelVisualizationType.enabled = True
-  
-  def writeAnalysisLogFile(self, inputPath, outputPath, files):  
-    # generate log file
-    logFile = open(outputPath+os.sep+"analysis.log","w") 
-    logFile.write("Date=" + datetime.now().strftime('%Y-%m-%d') + "\n")
-    logFile.write("Time=" + datetime.now().strftime('%H:%M:%S') + "\n")
-    logFile.write("InputPath=" + inputPath + "\n")
-    logFile.write("OutputPath=" + outputPath.replace("\\","/") + "\n")
-    if self.isJSON:
-      extension = "json"
-    else:
-      extension = "fcsv"
-    logFile.write("Files=") 
-    for i in range(len(files)-1):
-      logFile.write(files[i] + "." + extension + ",")
-    logFile.write(files[len(files)-1] + "." + extension + "\n")
-    logFile.write("LM_format="  + extension + "\n")
-    [pointNumber, dim, subjectNumber] = self.LM.lmOrig.shape
-    totalLandmarks = pointNumber + len(self.LMExclusionList)
-    logFile.write("NumberLM=" + str(totalLandmarks) + "\n")
-    logFile.write("ExcludedLM=")
-    exclusions = ",".join(map(str, self.LMExclusionList)) 
-    logFile.write(exclusions + "\n")
-    logFile.write("Scale=" + str(not self.skipScalingOption) + "\n")
-    logFile.write("MeanShape=MeanShape.csv"+ "\n")
-    logFile.write("eigenvalues=eigenvalues.csv" + "\n")
-    logFile.write("eigenvectors=eigenvectors.csv" + "\n")
-    logFile.write("OutputData=OutputData.csv" + "\n")
-    logFile.write("pcScores=pcScores.csv" + "\n")
-    logFile.close()
-    
-  def populateDistanceTable(self, files):
-    sortedArray = np.zeros(len(files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
-    sortedArray['filename']=files
-    sortedArray['procdist']=self.LM.procdist[:,0]
-    sortedArray.sort(order='procdist')
-
-
-    tableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Procrustes Distance Table')
-    GPANodeCollection.AddItem(tableNode)
-    col1=tableNode.AddColumn()
-    col1.SetName('ID')
-
-    col2=tableNode.AddColumn()
-    col2.SetName('Procrustes Distance')
-    tableNode.SetColumnType('ID',vtk.VTK_STRING)
-    tableNode.SetColumnType('Procrustes Distance',vtk.VTK_FLOAT)
-
-    for i in range(len(files)):
-      tableNode.AddEmptyRow()
-      tableNode.SetCellText(i,0,sortedArray['filename'][i])
-      tableNode.SetCellText(i,1,str(sortedArray['procdist'][i]))
-
-    barPlot = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLPlotSeriesNode', 'Distances')
-    GPANodeCollection.AddItem(barPlot)
-    barPlot.SetAndObserveTableNodeID(tableNode.GetID())
-    barPlot.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeBar)
-    barPlot.SetLabelColumnName('ID') #displayed when hovering mouse
-    barPlot.SetYColumnName('Procrustes Distance') # for bar plots, index is the x-value
-    chartNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLPlotChartNode', 'Procrustes Distance Chart')
-    GPANodeCollection.AddItem(chartNode)
-    chartNode.SetTitle('Procrustes Distances')
-    chartNode.SetLegendVisibility(False)
-    chartNode.SetYAxisTitle('Distance')
-    chartNode.SetXAxisTitle('Subjects')
-    chartNode.AddAndObservePlotSeriesNodeID(barPlot.GetID())
-    layoutManager = slicer.app.layoutManager()
-    self.assignLayoutDescription()
-    #set up custom layout
-    plotWidget = layoutManager.plotWidget(0)
-    plotViewNode = plotWidget.mrmlPlotViewNode()
-    plotViewNode.SetPlotChartNodeID(chartNode.GetID())
-    #add table to new layout
-    slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(tableNode.GetID())
-    slicer.app.applicationLogic().PropagateTableSelection()
-
-  def factorStringChanged(self):
-    if self.factorName.text is not "":
-      self.inputFactorButton.enabled = True
-    else:
-      self.inputFactorButton.enabled = False
-
-  def enterFactors(self):
-    sortedArray = np.zeros(len(self.files), dtype={'names':('filename', 'procdist'),'formats':('U50','f8')})
-    sortedArray['filename']=self.files
-
-    #check for an existing factor table, if so remove
-    if hasattr(self, 'factorTableNode'):
-      GPANodeCollection.RemoveItem(self.factorTableNode)
-      slicer.mrmlScene.RemoveNode(self.factorTableNode)
-      
-    self.factorTableNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTableNode', 'Factor Table')
-    GPANodeCollection.AddItem(self.factorTableNode)
-    col1=self.factorTableNode.AddColumn()
-    col1.SetName('ID')
-    for i in range(len(self.files)):
-      self.factorTableNode.AddEmptyRow()
-      self.factorTableNode.SetCellText(i,0,sortedArray['filename'][i])
-
-    col2=self.factorTableNode.AddColumn()
-    col2.SetName(self.factorName.text)
-    self.selectFactor.addItem(self.factorName.text)
-
-    #add table to new layout
-    slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveTableID(self.factorTableNode.GetID())
-    slicer.app.applicationLogic().PropagateTableSelection()
-    self.factorTableNode.GetTable().Modified()
-
-    #reset text field for names
-    self.factorName.setText("")
-    self.inputFactorButton.enabled = False
-  
-  def plot(self):
-    logic = GPALogic()
-    # get values from boxs
-    xValue=self.XcomboBox.currentIndex
-    yValue=self.YcomboBox.currentIndex
-    shape = self.LM.lm.shape
-
-    factorIndex = self.selectFactor.currentIndex
-    if (factorIndex > 0) and hasattr(self, 'factorTableNode'): 
-      factorCol = self.factorTableNode.GetTable().GetColumn(1)
-      factorArray=[]
-      for i in range(factorCol.GetNumberOfTuples()):
-        factorArray.append(factorCol.GetValue(i).rstrip())
-      factorArrayNP = np.array(factorArray)
-      if(len(np.unique(factorArrayNP))>1 ): #check values of factors for scatter plot
-        logic.makeScatterPlotWithFactors(self.scatterDataAll,self.files,factorArrayNP,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
-      else:   #if the user input a factor requiring more than 3 groups, do not use factor
-        qt.QMessageBox.critical(slicer.util.mainWindow(),
-        'Error', 'Please use more than one unique factor')
-        logic.makeScatterPlot(self.scatterDataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
-    else:
-      logic.makeScatterPlot(self.scatterDataAll,self.files,'PCA Scatter Plots',"PC"+str(xValue+1),"PC"+str(yValue+1),self.pcNumber)
-
-  def lolliPlot(self):
-    pb1=self.vectorOne.currentIndex
-    pb2=self.vectorTwo.currentIndex
-    pb3=self.vectorThree.currentIndex
-
-    pcList=[pb1,pb2,pb3]
-    logic = GPALogic()
-      
-    meanLandmarkNode=slicer.mrmlScene.GetFirstNodeByName('Mean Landmark Node')
-    meanLandmarkNode.SetDisplayVisibility(1)
-    componentNumber = 1
-    for pc in pcList:
-      logic.lollipopGraph(self.LM, self.rawMeanLandmarks, pc, self.sampleSizeScaleFactor, componentNumber, self.TwoDType.isChecked())
-      componentNumber+=1
-
-  def initializeOnLoad(self):
-  # clear rest of module when starting GPA analysis
-
-    self.grayscaleSelector.setCurrentPath("")
-    self.FudSelect.setCurrentPath("")
-    
-    self.landmarkVisualizationType.setChecked(True)
-
-    self.slider1.clear()
-    self.slider2.clear()
-
-    self.vectorOne.clear()
-    self.vectorTwo.clear()
-    self.vectorThree.clear()
-    self.XcomboBox.clear()
-    self.YcomboBox.clear()
-
-    self.scaleSlider.value=3
-    self.scaleMeanShapeSlider.value=3
-    self.meanShapeColor.color=qt.QColor(250,128,114)
-
-    self.nodeCleanUp()
-    
-    # Reset zoom
-    if self.widgetZoomFactor > 0: 
-      cameras=slicer.mrmlScene.GetNodesByClass('vtkMRMLCameraNode')
-      for camera in cameras:
-        camera.GetCamera().Zoom(1/self.widgetZoomFactor)
-      self.widgetZoomFactor = 0
-
-  def reset(self):
-    # delete the two data objects
-
-    # reset text fields
-    self.outputDirectory=None
-    self.outText.setText(" ")
-    self.LM_dir_name=None
-    self.LMText.setText(" ")
-
-    self.grayscaleSelector.setCurrentPath("")
-    self.FudSelect.setCurrentPath("")
-    self.grayscaleSelector.enabled = False
-    self.FudSelect.enabled = False
-
-    self.slider1.clear()
-    self.slider2.clear()
-
-    self.vectorOne.clear()
-    self.vectorTwo.clear()
-    self.vectorThree.clear()
-    self.XcomboBox.clear()
-    self.YcomboBox.clear()
-    self.selectFactor.clear()
-    self.factorName.setText("")
-    self.scaleSlider.value=3
-
-    self.scaleMeanShapeSlider.value=3
-    self.meanShapeColor.color=qt.QColor(250,128,114)
-    
-    self.scaleSlider.enabled = False
-
-    # Disable buttons for workflow
-    self.plotButton.enabled = False
-    self.inputFactorButton.enabled = False
-    self.lolliButton.enabled = False
-    self.plotDistributionButton.enabled = False
-    self.plotMeanButton3D.enabled = False
-    self.showMeanLabelsButton.enabled = False
-    self.loadButton.enabled = False
-    self.landmarkVisualizationType.enabled = False
-    self.modelVisualizationType.enabled = False
-    self.selectorButton.enabled = False
-    self.stopRecordButton.enabled = False
-    self.startRecordButton.enabled = False
-
-    #delete data from previous runs
-    self.nodeCleanUp()
-
-  def nodeCleanUp(self):
-    # clear all nodes created by the module
-    for node in GPANodeCollection:
-
-      GPANodeCollection.RemoveItem(node)
-      slicer.mrmlScene.RemoveNode(node)
-
-  def toggleMeanPlot(self):
-    visibility = self.meanLandmarkNode.GetDisplayVisibility()
-    if visibility:
-      visibility = self.meanLandmarkNode.SetDisplayVisibility(False)
-      if hasattr(self, 'cloneLandmarkNode'):
-        self.cloneLandmarkNode.SetDisplayVisibility(False)
-    else:
-      visibility = self.meanLandmarkNode.SetDisplayVisibility(True)
-      # refresh color and scale from GUI
-      self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value)
-      color = self.meanShapeColor.color
-      self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
-      # refresh PC warped mean node
-      if hasattr(self, 'cloneLandmarkNode'):
-        self.cloneLandmarkNode.SetDisplayVisibility(True)
-        self.cloneLandmarkDisplayNode.SetGlyphScale(self.scaleMeanShapeSlider.value)
-        self.cloneLandmarkDisplayNode.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
-  
-  def toggleMeanLabels(self):
-    visibility = self.meanLandmarkNode.GetDisplayNode().GetPointLabelsVisibility()
-    if visibility:
-      self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(0)
-      if hasattr(self, 'cloneLandmarkNode'):
-        self.cloneLandmarkDisplayNode.SetPointLabelsVisibility(0)
-    else:
-      self.meanLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(1)
-      self.meanLandmarkNode.GetDisplayNode().SetTextScale(3)
-      if hasattr(self, 'cloneLandmarkNode'):
-        self.cloneLandmarkDisplayNode.SetPointLabelsVisibility(1)
-        self.cloneLandmarkDisplayNode.SetTextScale(3)
-    
-  def toggleMeanColor(self):
-    color = self.meanShapeColor.color
-    self.meanLandmarkNode.GetDisplayNode().SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
-    if hasattr(self, 'cloneLandmarkNode'):
-      self.cloneLandmarkDisplayNode.SetSelectedColor([color.red()/255,color.green()/255,color.blue()/255])
-    
-  def scaleMeanGlyph(self):
-    scaleFactor = self.sampleSizeScaleFactor/10
-    self.meanLandmarkNode.GetDisplayNode().SetGlyphScale(self.scaleMeanShapeSlider.value)
-    if hasattr(self, 'cloneLandmarkNode'):
-      self.cloneLandmarkDisplayNode.SetGlyphScale(self.scaleMeanShapeSlider.value)
-    
+  def onSelect(self):
+    self.applyButton.enabled = bool (self.meshDirectory.currentPath and self.landmarkDirectory.currentPath and 
+      self.baseMeshSelector.currentNode() and self.baseLMSelector.currentNode() and self.baseSLMSelect.currentNode() 
+      and self.outputDirectory.currentPath)
+          
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
-    # Initialize zoom factor for widget
-    self.widgetZoomFactor = 0
     
     # Set up tabs to split workflow
     tabsWidget = qt.QTabWidget()
-    setupTab = qt.QWidget()
-    setupTabLayout = qt.QFormLayout(setupTab)
-    exploreTab = qt.QWidget()
-    exploreTabLayout = qt.QFormLayout(exploreTab)
+    alignTab = qt.QWidget()
+    alignTabLayout = qt.QFormLayout(alignTab)
+    generateMeanTab = qt.QWidget()
+    generateMeanTabLayout = qt.QFormLayout(generateMeanTab)
+    DeCATab = qt.QWidget()
+    DeCATabLayout = qt.QFormLayout(DeCATab)
     visualizeTab = qt.QWidget()
     visualizeTabLayout = qt.QFormLayout(visualizeTab)
+    symmetryTab = qt.QWidget()
+    symmetryTabLayout = qt.QFormLayout(symmetryTab)
 
-    tabsWidget.addTab(setupTab, "Setup Analysis")
-    tabsWidget.addTab(exploreTab, "Explore Data")
-    tabsWidget.addTab(visualizeTab, "Interactive Visualizion")
+    tabsWidget.addTab(alignTab, "Rigid Alignment")
+    tabsWidget.addTab(generateMeanTab, "Generate Mean")
+    tabsWidget.addTab(symmetryTab, "Mirror Data")
+    tabsWidget.addTab(DeCATab, "DeCA")
+    tabsWidget.addTab(visualizeTab, "Visualize Results")
+    
     self.layout.addWidget(tabsWidget)
     
-    ################################### Setup Tab ###################################
-    inbutton=ctk.ctkCollapsibleButton()
-    inbutton.text="Setup Analysis"
-    inputLayout= qt.QGridLayout(inbutton)
-    setupTabLayout.addRow(inbutton)
+    ################################### Align Tab ###################################
+    # Layout within the tab
+    alignWidget=ctk.ctkCollapsibleButton()
+    alignWidgetLayout = qt.QFormLayout(alignWidget)
+    alignWidget.text = "Align all samples to base sample"
+    alignTabLayout.addRow(alignWidget)
+    
+    #
+    # Select base mesh
+    #
+    self.baseMeshSelector = ctk.ctkPathLineEdit()
+    self.baseMeshSelector.filters  = ctk.ctkPathLineEdit().Files
+    self.baseMeshSelector.nameFilters=["*.stl"]
+    alignWidgetLayout.addRow("Base model: ", self.baseMeshSelector)
+    
+    #
+    # Select base landmarks
+    #
+    self.baseLMSelector = ctk.ctkPathLineEdit()
+    self.baseLMSelector.filters  = ctk.ctkPathLineEdit().Files
+    self.baseLMSelector.nameFilters=["*.fcsv"]
+    alignWidgetLayout.addRow("Base landmarks: ", self.baseLMSelector)
 
-    self.LMText, volumeInLabel, self.LMbutton=self.textIn('Landmark Folder','', '')
-    inputLayout.addWidget(self.LMText,1,2)
-    inputLayout.addWidget(volumeInLabel,1,1)
-    inputLayout.addWidget(self.LMbutton,1,3)
-    self.LMbutton.connect('clicked(bool)', self.selectLandmarkFile)
+    #
+    # Select meshes directory
+    #  
+    self.meshDirectory=ctk.ctkPathLineEdit()
+    self.meshDirectory.filters = ctk.ctkPathLineEdit.Dirs
+    self.meshDirectory.setToolTip( "Select directory containing meshes" )
+    alignWidgetLayout.addRow("Mesh directory: ", self.meshDirectory)
+    
+    #
+    # Select landmarks directory
+    #
+    self.landmarkDirectory=ctk.ctkPathLineEdit()
+    self.landmarkDirectory.filters = ctk.ctkPathLineEdit.Dirs
+    self.landmarkDirectory.setToolTip( "Select directory containing landmarks" )
+    alignWidgetLayout.addRow("Landmark directory: ", self.landmarkDirectory)
+    
+    #
+    # Select aligned mesh directory
+    #
+    self.alignedMeshDirectory=ctk.ctkPathLineEdit()
+    self.alignedMeshDirectory.filters = ctk.ctkPathLineEdit.Dirs
+    self.alignedMeshDirectory.setToolTip( "Select directory for aligned meshes: " )
+    alignWidgetLayout.addRow("Aligned mesh directory: ", self.alignedMeshDirectory)
+    
+    #
+    # Select aligned landmark directory
+    #
+    self.alignedLMDirectory=ctk.ctkPathLineEdit()
+    self.alignedLMDirectory.filters = ctk.ctkPathLineEdit.Dirs
+    self.alignedLMDirectory.setToolTip( "Select directory for aligned landmarks: " )
+    alignWidgetLayout.addRow("Aligned landmark directory: ", self.alignedLMDirectory)
 
+    #
+    # Apply Button
+    #
+    self.applyButton = qt.QPushButton("Run alignment")
+    self.applyButton.toolTip = "Run alignment to base subject"
+    self.applyButton.enabled = False
+    alignWidgetLayout.addRow(self.applyButton)
+    
+    # connections
+    self.baseMeshSelector.connect('validInputChanged(bool)', self.onSelect)
+    self.baseLMSelector.connect('validInputChanged(bool)', self.onSelect)
+    self.meshDirectory.connect('validInputChanged(bool)', self.onSelect)
+    self.landmarkDirectory.connect('validInputChanged(bool)', self.onSelect) 
+    self.alignedMeshDirectory.connect('validInputChanged(bool)', self.onSelect)
+    self.alignedLMDirectory.connect('validInputChanged(bool)', self.onSelect)
+    self.applyButton.connect('clicked(bool)', self.onApplyButton)
+    
+    ################################### Mean Tab ###################################
+    # Layout within Mean tab
+    MeanWidget=ctk.ctkCollapsibleButton()
+    MeanWidgetLayout = qt.QFormLayout(MeanWidget)
+    MeanWidget.text = "Generate mean mesh"
+    generateMeanTabLayout.addRow(MeanWidget)
+    
+    #
+    # Select aligned mesh directory
+    #
+    self.meanMeshDirectory=ctk.ctkPathLineEdit()
+    self.meanMeshDirectory.filters = ctk.ctkPathLineEdit.Dirs
+    self.meanMeshDirectory.setToolTip( "Select directory for aligned meshes: " )
+    MeanWidgetLayout.addRow("Aligned mesh directory: ", self.meanMeshDirectory)
+    
+    #
+    # Select aligned landmark directory
+    #
+    self.meanLMDirectory=ctk.ctkPathLineEdit()
+    self.meanLMDirectory.filters = ctk.ctkPathLineEdit.Dirs
+    self.meanLMDirectory.setToolTip( "Select directory for aligned landmarks: " )
+    MeanWidgetLayout.addRow("Aligned landmark directory: ", self.meanLMDirectory)
+
+    #
     # Select output directory
-    self.outText, outLabel, self.outbutton=self.textIn('Output directory prefix','', '')
-    inputLayout.addWidget(self.outText,2,2)
-    inputLayout.addWidget(outLabel,2,1)
-    inputLayout.addWidget(self.outbutton,2,3)
-    self.outbutton.connect('clicked(bool)', self.selectOutputDirectory)
-
-    self.excludeLMLabel=qt.QLabel('Exclude landmarks')
-    inputLayout.addWidget(self.excludeLMLabel,3,1)
-
-    self.excludeLMText=qt.QLineEdit()
-    self.excludeLMText.setToolTip("No spaces. Seperate numbers by commas.  Example:  51,52")
-    inputLayout.addWidget(self.excludeLMText,3,2,1,2)
-
-    self.skipScalingCheckBox = qt.QCheckBox()
-    self.skipScalingCheckBox.setText("Skip Scaling during GPA")
-    self.skipScalingCheckBox.checked = 0
-    self.skipScalingCheckBox.setToolTip("If checked, GPA will skip scaling.")
-    inputLayout.addWidget(self.skipScalingCheckBox, 4,2)
-
-    #Load Button
-    self.loadButton = qt.QPushButton("Execute GPA + PCA")
-    self.loadButton.checkable = True
-    inputLayout.addWidget(self.loadButton,5,1,1,3)
-    self.loadButton.toolTip = "Push to start the program. Make sure you have filled in all the data."
-    self.loadButton.enabled = False
-    self.loadButton.connect('clicked(bool)', self.onLoad)
+    #  
+    self.meanOutputDirectory=ctk.ctkPathLineEdit()
+    self.meanOutputDirectory.filters = ctk.ctkPathLineEdit.Dirs
+    self.meanOutputDirectory.setToolTip( "Select directory for mean output" )
+    MeanWidgetLayout.addRow("Mean output directory: ", self.meanOutputDirectory)
     
-    #Load from file option
-    loadFromFileCollapsibleButton = ctk.ctkCollapsibleButton()
-    loadFromFileLayout = qt.QGridLayout(loadFromFileCollapsibleButton)
-    loadFromFileCollapsibleButton.text = "Load previous analysis"
-    loadFromFileCollapsibleButton.collapsed = True
-    setupTabLayout.addRow(loadFromFileCollapsibleButton)
+    #
+    # Generate mean button
+    #
+    self.generateMeanButton = qt.QPushButton("Generate mean")
+    self.generateMeanButton.toolTip = "Generate mean template from aligned subjects"
+    self.generateMeanButton.enabled = False
+    MeanWidgetLayout.addRow(self.generateMeanButton)
     
-    #Select results folder
-    self.resultsText, resultsLabel, self.resultsButton=self.textIn('Results Directory','', '')
-    loadFromFileLayout.addWidget(self.resultsText,2,2)
-    loadFromFileLayout.addWidget(resultsLabel,2,1)
-    loadFromFileLayout.addWidget(self.resultsButton,2,3)
-    self.resultsButton.connect('clicked(bool)', self.selectResultsDirectory)
+    #
+    # connections
+    #
+    self.meanMeshDirectory.connect('validInputChanged(bool)', self.onMeanSelect)
+    self.meanLMDirectory.connect('validInputChanged(bool)', self.onMeanSelect)
+    self.meanOutputDirectory.connect('validInputChanged(bool)', self.onMeanSelect)
+    self.generateMeanButton.connect('clicked(bool)', self.onGenerateMean)
     
-    #Load Results Button
-    self.loadResultsButton = qt.QPushButton("Load GPA + PCA Analysis from File")
-    self.loadResultsButton.checkable = True
-    loadFromFileLayout.addWidget(self.loadResultsButton,5,1,1,3)
-    self.loadResultsButton.toolTip = "Select previous analysis from file and restore."
-    self.loadResultsButton.enabled = False
-    self.loadResultsButton.connect('clicked(bool)', self.onLoadFromFile)
+    ################################### DeCA Tab ###################################
+    # Layout within the DeCA tab
+    DeCAWidget=ctk.ctkCollapsibleButton()
+    DeCAWidgetLayout = qt.QFormLayout(DeCAWidget)
+    DeCAWidget.text = "Dense Correspondence I/0"
+    DeCATabLayout.addRow(DeCAWidget)
     
-    ################################### Explore Tab ###################################
-    #Mean Shape display section
-    meanShapeFrame = ctk.ctkCollapsibleButton()
-    meanShapeFrame.text="Mean Shape Plot Options"
-    meanShapeLayout= qt.QGridLayout(meanShapeFrame)
-    exploreTabLayout.addRow(meanShapeFrame)
-
-    meanButtonLable=qt.QLabel("Mean shape visibility: ")
-    meanShapeLayout.addWidget(meanButtonLable,1,1)
-
-    self.plotMeanButton3D = qt.QPushButton("Toggle mean shape visibility")
-    self.plotMeanButton3D.checkable = True
-    self.plotMeanButton3D.toolTip = "Toggle visibility of mean shape plot"
-    meanShapeLayout.addWidget(self.plotMeanButton3D,1,2)
-    self.plotMeanButton3D.enabled = False
-    self.plotMeanButton3D.connect('clicked(bool)', self.toggleMeanPlot)
-
-    meanButtonLable=qt.QLabel("Mean point label visibility: ")
-    meanShapeLayout.addWidget(meanButtonLable,2,1)
+    #
+    # Select base mesh
+    #
+    self.DCBaseModelSelector = ctk.ctkPathLineEdit()
+    self.DCBaseModelSelector.filters  = ctk.ctkPathLineEdit().Files
+    self.DCBaseModelSelector.nameFilters=["*.ply"]
+    DeCAWidgetLayout.addRow("Base mesh: ", self.DCBaseModelSelector)
     
-    self.showMeanLabelsButton = qt.QPushButton("Toggle label visibility")
-    self.showMeanLabelsButton.checkable = True
-    self.showMeanLabelsButton.toolTip = "Toggle visibility of mean point labels"
-    meanShapeLayout.addWidget(self.showMeanLabelsButton,2,2)
-    self.showMeanLabelsButton.enabled = False
-    self.showMeanLabelsButton.connect('clicked(bool)', self.toggleMeanLabels)
-
-    meanColorLable=qt.QLabel("Mean shape color: ")
-    meanShapeLayout.addWidget(meanColorLable,3,1)
-    self.meanShapeColor = ctk.ctkColorPickerButton()
-    self.meanShapeColor.displayColorName = False
-    self.meanShapeColor.color = qt.QColor(250,128,114)
-    meanShapeLayout.addWidget(self.meanShapeColor,3,2)
-    self.meanShapeColor.connect('colorChanged(QColor)', self.toggleMeanColor)
-
-    self.scaleMeanShapeSlider = ctk.ctkSliderWidget()
-    self.scaleMeanShapeSlider.singleStep = .1
-    self.scaleMeanShapeSlider.minimum = 0
-    self.scaleMeanShapeSlider.maximum = 10
-    self.scaleMeanShapeSlider.value = 3
-    self.scaleMeanShapeSlider.setToolTip("Set scale for mean shape glyphs")
-    meanShapeSliderLabel=qt.QLabel("Mean shape glyph scale")
-    meanShapeLayout.addWidget(meanShapeSliderLabel,4,1)
-    meanShapeLayout.addWidget(self.scaleMeanShapeSlider,4,2)
-    self.scaleMeanShapeSlider.connect('valueChanged(double)', self.scaleMeanGlyph)
-
-     # Landmark Variance Section
-    distributionFrame=ctk.ctkCollapsibleButton()
-    distributionFrame.text="Landmark Variance Plot Options"
-    distributionLayout= qt.QGridLayout(distributionFrame)
-    exploreTabLayout.addRow(distributionFrame)
-
-    self.EllipseType=qt.QRadioButton()
-    ellipseTypeLabel=qt.QLabel("Ellipse type")
-    self.EllipseType.setChecked(True)
-    distributionLayout.addWidget(ellipseTypeLabel,2,1)
-    distributionLayout.addWidget(self.EllipseType,2,2,1,2)
-    self.SphereType=qt.QRadioButton()
-    sphereTypeLabel=qt.QLabel("Sphere type")
-    distributionLayout.addWidget(sphereTypeLabel,3,1)
-    distributionLayout.addWidget(self.SphereType,3,2,1,2)
-    self.CloudType=qt.QRadioButton()
-    cloudTypeLabel=qt.QLabel("Point cloud type")
-    distributionLayout.addWidget(cloudTypeLabel,4,1)
-    distributionLayout.addWidget(self.CloudType,4,2,1,2)
-    self.NoneType=qt.QRadioButton()
-    noneTypeLabel=qt.QLabel("None")
-    distributionLayout.addWidget(noneTypeLabel,5,1)
-    distributionLayout.addWidget(self.NoneType,5,2,1,2)
-
-    self.scaleSlider = ctk.ctkSliderWidget()
-    self.scaleSlider.singleStep = .1
-    self.scaleSlider.minimum = 0
-    self.scaleSlider.maximum = 10
-    self.scaleSlider.value = 3
-    self.scaleSlider.enabled = False
-    self.scaleSlider.setToolTip("Set scale for variance visualization")
-    sliderLabel=qt.QLabel("Scale Glyphs")
-    distributionLayout.addWidget(sliderLabel,2,3)
-    distributionLayout.addWidget(self.scaleSlider,3,3,1,2)
-    self.scaleSlider.connect('valueChanged(double)', self.onPlotDistribution)
-
-    self.plotDistributionButton = qt.QPushButton("Plot LM variance")
-    self.plotDistributionButton.checkable = True
-    self.plotDistributionButton.toolTip = "Visualize variance of landmarks from all subjects"
-    distributionLayout.addWidget(self.plotDistributionButton,7,1,1,4)
-    self.plotDistributionButton.enabled = False
-    self.plotDistributionButton.connect('clicked(bool)', self.onPlotDistribution)
-
-    #PC plot section
-    plotFrame=ctk.ctkCollapsibleButton()
-    plotFrame.text="PCA Scatter Plot Options"
-    plotLayout= qt.QGridLayout(plotFrame)
-    exploreTabLayout.addRow(plotFrame)
-
-    self.XcomboBox=qt.QComboBox()
-    Xlabel=qt.QLabel("X Axis")
-    plotLayout.addWidget(Xlabel,1,1)
-    plotLayout.addWidget(self.XcomboBox,1,2,1,3)
-
-    self.YcomboBox=qt.QComboBox()
-    Ylabel=qt.QLabel("Y Axis")
-    plotLayout.addWidget(Ylabel,2,1)
-    plotLayout.addWidget(self.YcomboBox,2,2,1,3)
-
-    self.factorNameLabel=qt.QLabel('Factor Name:')
-    plotLayout.addWidget(self.factorNameLabel,3,1)
-    self.factorName=qt.QLineEdit()
-    self.factorName.setToolTip("Enter factor name")
-    self.factorName.connect('textChanged(const QString &)', self.factorStringChanged)
-    plotLayout.addWidget(self.factorName,3,2)
-
-    self.inputFactorButton = qt.QPushButton("Add factor data")
-    self.inputFactorButton.checkable = True
-    self.inputFactorButton.toolTip = "Open table to input factor data"
-    plotLayout.addWidget(self.inputFactorButton,3,4)
-    self.inputFactorButton.enabled = False
-    self.inputFactorButton.connect('clicked(bool)', self.enterFactors)
-
-    self.selectFactor=qt.QComboBox()
-    self.selectFactor.addItem("No factor data")
-    selectFactorLabel=qt.QLabel("Select factor: ")
-    plotLayout.addWidget(selectFactorLabel,4,1)
-    plotLayout.addWidget(self.selectFactor,4,2,)
-
-    self.plotButton = qt.QPushButton("Scatter Plot")
-    self.plotButton.checkable = True
-    self.plotButton.toolTip = "Plot PCs"
-    plotLayout.addWidget(self.plotButton,5,1,1,5)
-    self.plotButton.enabled = False
-    self.plotButton.connect('clicked(bool)', self.plot)
-
-    # Lollipop Plot Section
-
-    lolliFrame=ctk.ctkCollapsibleButton()
-    lolliFrame.text="Lollipop Plot Options"
-    lolliLayout= qt.QGridLayout(lolliFrame)
-    exploreTabLayout.addRow(lolliFrame)
-
-    self.vectorOne=qt.QComboBox()
-    vectorOneLabel=qt.QLabel("Vector One: Red")
-    lolliLayout.addWidget(vectorOneLabel,1,1)
-    lolliLayout.addWidget(self.vectorOne,1,2,1,3)
-
-    self.vectorTwo=qt.QComboBox()
-    vector2Label=qt.QLabel("Vector Two: Green")
-    lolliLayout.addWidget(vector2Label,2,1)
-    lolliLayout.addWidget(self.vectorTwo,2,2,1,3)
-
-    self.vectorThree=qt.QComboBox()
-    vector3Label=qt.QLabel("Vector Three: Blue")
-    lolliLayout.addWidget(vector3Label,3,1)
-    lolliLayout.addWidget(self.vectorThree,3,2,1,3)
-
-    self.TwoDType=qt.QCheckBox()
-    self.TwoDType.checked = False
-    self.TwoDType.setText("Lollipop 2D Projection")
-    lolliLayout.addWidget(self.TwoDType,4,2)
-
-    self.lolliButton = qt.QPushButton("Lollipop Vector Plot")
-    self.lolliButton.checkable = True
-    self.lolliButton.toolTip = "Plot PC vectors"
-    lolliLayout.addWidget(self.lolliButton,6,1,1,6)
-    self.lolliButton.enabled = False
-    self.lolliButton.connect('clicked(bool)', self.lolliPlot)
-
+    #
+    # Select base landmarks
+    #
+    self.DCBaseLMSelector = ctk.ctkPathLineEdit()
+    self.DCBaseLMSelector.filters  = ctk.ctkPathLineEdit().Files
+    self.DCBaseLMSelector.nameFilters=["*.fcsv"]
+    DeCAWidgetLayout.addRow("Base landmarks: ", self.DCBaseLMSelector)
+    
+    #
+    # Select rigidly aligned meshes directory
+    #  
+    self.DCMeshDirectory=ctk.ctkPathLineEdit()
+    self.DCMeshDirectory.filters = ctk.ctkPathLineEdit.Dirs
+    self.DCMeshDirectory.setToolTip( "Select directory containing rigidly aligned meshes" )
+    DeCAWidgetLayout.addRow("Rigidly Aligned Mesh directory: ", self.DCMeshDirectory)
+    
+    #
+    # Select rigidly aligned landmark directory
+    #  
+    self.DCLandmarkDirectory=ctk.ctkPathLineEdit()
+    self.DCLandmarkDirectory.filters = ctk.ctkPathLineEdit.Dirs
+    self.DCLandmarkDirectory.setToolTip( "Select directory containing rigidly aligned landmarks" )
+    DeCAWidgetLayout.addRow("Rigidly Aligned Landmark directory: ", self.DCLandmarkDirectory)
+    
+    #
+    # Select DeCA output directory
+    #  
+    self.DCOutputDirectory=ctk.ctkPathLineEdit()
+    self.DCOutputDirectory.filters = ctk.ctkPathLineEdit.Dirs
+    self.DCOutputDirectory.setToolTip( "Select directory for DeCA output" )
+    DeCAWidgetLayout.addRow("DeCA output directory: ", self.DCOutputDirectory)
+    
+    #
+    # Use CPD registration
+    #
+    self.CPDCheckBox = qt.QCheckBox()
+    self.CPDCheckBox.checked = False
+    self.CPDCheckBox.enabled = False
+    self.CPDCheckBox.setToolTip("If checked, DeCA will use CPD for point correspondences.")
+    #DeCAWidgetLayout.addRow("Use CPD registration: ", self.CPDCheckBox)
+    
+    #
+    # Write directory for error checking
+    #
+    self.WriteErrorCheckBox = qt.QCheckBox()
+    self.WriteErrorCheckBox.checked = False
+    self.WriteErrorCheckBox.setToolTip("If checked, DeCA will create a directory of results for use in estimating point correspondence error.")
+    #DeCAWidgetLayout.addRow("Create output for error checking: ", self.WriteErrorCheckBox)
+    
+    #
+    # Select Analysis Type
+    #
+    self.analysisTypeShape=qt.QRadioButton()
+    self.analysisTypeShape.setChecked(True)
+    DeCAWidgetLayout.addRow("Shape analysis: ", self.analysisTypeShape)
+    self.analysisTypeSymmetry=qt.QRadioButton()
+    DeCAWidgetLayout.addRow("Symmetry analysis: ", self.analysisTypeSymmetry)
+    
+    #
+    # Hidden symmetry options
+    self.symmetryCollapsibleButton = ctk.ctkCollapsibleButton()
+    self.symmetryCollapsibleButton.text = "Symmetry Options"
+    self.symmetryCollapsibleButton.collapsed = True
+    self.symmetryCollapsibleButton.enabled = False
+    DeCAWidgetLayout.addRow(self.symmetryCollapsibleButton)
+    symmetryOptionLayout = qt.QFormLayout(self.symmetryCollapsibleButton)
+    
+    self.mirrorMeshSelector = ctk.ctkPathLineEdit()
+    self.mirrorMeshSelector.filters  = ctk.ctkPathLineEdit().Dirs
+    self.mirrorMeshSelector.enabled = False
+    self.mirrorMeshSelector.setToolTip( "Select directory with mirrored mesh data" )
+    symmetryOptionLayout.addRow("Mirror mesh directory: ", self.mirrorMeshSelector)
+ 
+    self.mirrorLMSelector = ctk.ctkPathLineEdit()
+    self.mirrorLMSelector.filters  = ctk.ctkPathLineEdit().Dirs
+    self.mirrorLMSelector.enabled = False
+    self.mirrorLMSelector.setToolTip( "Select directory with mirrored landmark data" )
+    symmetryOptionLayout.addRow("Mirror landmark directory: ", self.mirrorLMSelector)
+    
+    #
+    # Run DeCA Button
+    #
+    self.DCApplyButton = qt.QPushButton("Run DeCA")
+    self.DCApplyButton.toolTip = "Run non-rigid alignment"
+    self.DCApplyButton.enabled = False
+    DeCAWidgetLayout.addRow(self.DCApplyButton)
+    
+    # Connections
+    self.DCBaseModelSelector.connect('validInputChanged(bool)', self.onDCSelect)
+    self.DCBaseLMSelector.connect('validInputChanged(bool)', self.onDCSelect)
+    self.DCMeshDirectory.connect('validInputChanged(bool)', self.onDCSelect)
+    self.DCLandmarkDirectory.connect('validInputChanged(bool)', self.onDCSelect)
+    self.DCOutputDirectory.connect('validInputChanged(bool)', self.onDCSelect)
+    self.analysisTypeShape.connect('toggled(bool)', self.onToggleAnalysis)
+    self.analysisTypeSymmetry.connect('toggled(bool)', self.onToggleAnalysis)
+    self.mirrorMeshSelector.connect('validInputChanged(bool)', self.onDCSelect)
+    self.mirrorLMSelector.connect('validInputChanged(bool)', self.onDCSelect)
+    self.DCApplyButton.connect('clicked(bool)', self.onDCApplyButton)
+    
     ################################### Visualize Tab ###################################
-    # Interactive view set up tab
-    selectTemplatesButton=ctk.ctkCollapsibleButton()
-    selectTemplatesButton.text="Setup Interactive Visualization"
-    selectTemplatesLayout= qt.QGridLayout(selectTemplatesButton)
-    visualizeTabLayout.addRow(selectTemplatesButton)
+    # Layout within the tab
+    visualizeWidget=ctk.ctkCollapsibleButton()
+    visualizeWidgetLayout = qt.QFormLayout(visualizeWidget)
+    visualizeWidget.text = "Visualize the output feature heat maps"
+    visualizeTabLayout.addRow(visualizeWidget)
     
-    self.landmarkVisualizationType=qt.QRadioButton()
-    landmarkVisualizationTypeLabel=qt.QLabel("Mean shape visualization")
-    self.landmarkVisualizationType.setChecked(True)
-    self.landmarkVisualizationType.enabled = False
-    selectTemplatesLayout.addWidget(landmarkVisualizationTypeLabel,2,1)
-    selectTemplatesLayout.addWidget(self.landmarkVisualizationType,2,2,1,4)
-    self.modelVisualizationType=qt.QRadioButton()
-    self.modelVisualizationType.enabled = False
-    modelVisualizationTypeLabel=qt.QLabel("3D model visualization")
-    selectTemplatesLayout.addWidget(modelVisualizationTypeLabel,3,1)
-    selectTemplatesLayout.addWidget(self.modelVisualizationType,3,2,1,4)
-    self.landmarkVisualizationType.connect('toggled(bool)', self.onToggleVisualization)
-    self.modelVisualizationType.connect('toggled(bool)', self.onToggleVisualization)
-
-    self.grayscaleSelectorLabel = qt.QLabel("Specify reference model")
-    self.grayscaleSelectorLabel.setToolTip( "Load the model for the interactive visualization")
-    self.grayscaleSelectorLabel.enabled = False
-    selectTemplatesLayout.addWidget(self.grayscaleSelectorLabel,4,2)
-
-    self.grayscaleSelector = ctk.ctkPathLineEdit()
-    self.grayscaleSelector.filters  = ctk.ctkPathLineEdit().Files
-    self.grayscaleSelector.nameFilters= ["Model (*.ply *.stl *.obj *.vtk *.vtp *.orig *.g .byu )"]
-    self.grayscaleSelector.enabled = False
-    self.grayscaleSelector.connect('validInputChanged(bool)', self.onModelSelected)
-    selectTemplatesLayout.addWidget(self.grayscaleSelector,4,3,1,3)
-
-    self.FudSelectLabel = qt.QLabel("Specify LM set for the selected model: ")
-    self.FudSelectLabel.setToolTip( "Select the landmark set that corresponds to the reference model")
-    self.FudSelectLabel.enabled = False
-    self.FudSelect = ctk.ctkPathLineEdit()
-    self.FudSelect.filters  = ctk.ctkPathLineEdit().Files
-    self.FudSelect.nameFilters=["*.fcsv"]
-    self.FudSelect.enabled = False
-    self.FudSelect.connect('validInputChanged(bool)', self.onModelSelected)
-    selectTemplatesLayout.addWidget(self.FudSelectLabel,5,2)
-    selectTemplatesLayout.addWidget(self.FudSelect,5,3,1,3)
-
-    self.selectorButton = qt.QPushButton("Apply")
-    self.selectorButton.checkable = True
-    selectTemplatesLayout.addWidget(self.selectorButton,6,1,1,5)
-    self.selectorButton.enabled = False
-    self.selectorButton.connect('clicked(bool)', self.onSelect)
-
-    # PC warping
-    vis=ctk.ctkCollapsibleButton()
-    vis.text='PCA Visualization Parameters'
-    visLayout= qt.QGridLayout(vis)
-    visualizeTabLayout.addRow(vis)
+    #
+    # Select base mesh
+    #
+    self.meshSelect = slicer.qMRMLNodeComboBox()
+    self.meshSelect.nodeTypes = ( ("vtkMRMLModelNode"), "" )
+    self.meshSelect.setToolTip( "Select model node with result arrays" )
+    self.meshSelect.selectNodeUponCreation = False
+    self.meshSelect.noneEnabled = True
+    self.meshSelect.addEnabled = False
+    self.meshSelect.removeEnabled = False
+    self.meshSelect.showHidden = False
+    self.meshSelect.setMRMLScene( slicer.mrmlScene )
+    visualizeWidgetLayout.addRow("Result Model: ", self.meshSelect)
     
-    self.applyEnabled=False
-
-    def warpOnChangePC1(value):
-      if self.applyEnabled and self.slider1.boxValue() is not 'None':
-        self.onApply()
-   
-    def warpOnChangePC2(value):
-      if self.applyEnabled and self.slider2.boxValue() is not 'None':
-        self.onApply()
-
-    self.PCList=[]
-    self.slider1=sliderGroup(onChanged = warpOnChangePC1)
-    self.slider1.connectList(self.PCList)
-    visLayout.addWidget(self.slider1,3,1,1,2)
-
-    self.slider2=sliderGroup(onChanged = warpOnChangePC2)
-    self.slider2.connectList(self.PCList)
-    visLayout.addWidget(self.slider2,4,1,1,2)
-
-    # Create Animations
-    animate=ctk.ctkCollapsibleButton()
-    animate.text='Create animation of PC Warping'
-    animateLayout= qt.QGridLayout(animate)
-    visualizeTabLayout.addRow(animate)
+    #
+    # Select Subject ID
+    #
+    self.subjectIDBox=qt.QComboBox()
+    self.subjectIDBox.enabled = False
+    visualizeWidgetLayout.addRow("Subject ID: ", self.subjectIDBox)
     
-    self.startRecordButton = qt.QPushButton("Start Recording")
-    self.startRecordButton.toolTip = "Start recording PCA warping applied manually using the slider bars."
-    self.startRecordButton.enabled = False
-    animateLayout.addWidget(self.startRecordButton,1,1,1,2)
-    self.startRecordButton.connect('clicked(bool)', self.onStartRecording)
-    self.stopRecordButton = qt.QPushButton("Stop Recording")
-    self.stopRecordButton.toolTip = "Stop recording PC warping and review recording in the Sequences module."
-    self.stopRecordButton.enabled = False
-    animateLayout.addWidget(self.stopRecordButton,1,5,1,2)
-    self.stopRecordButton.connect('clicked(bool)', self.onStopRecording)
-
-    # Reset button
-    resetButton = qt.QPushButton("Reset Scene")
-    resetButton.checkable = True
-    visualizeTabLayout.addRow(resetButton)
-    resetButton.toolTip = "Push to reset all fields."
-    resetButton.connect('clicked(bool)', self.reset)
-
+    # Connections
+    self.meshSelect.connect("currentNodeChanged(vtkMRMLNode*)", self.onVisualizeMeshSelect)
+    self.subjectIDBox.connect("currentIndexChanged(int)", self.onSubjectIDSelect)
+       
+    # Add vertical spacer
     self.layout.addStretch(1)
     
-    # Add menu buttons
-    self.addLayoutButton(500, 'GPA Module View', 'Custom layout for GPA module', 'LayoutSlicerMorphView.png', slicer.customLayoutSM)
-    self.addLayoutButton(501, 'Table Only View', 'Custom layout for GPA module', 'LayoutTableOnlyView.png', slicer.customLayoutTableOnly)
-    self.addLayoutButton(502, 'Plot Only View', 'Custom layout for GPA module', 'LayoutPlotOnlyView.png', slicer.customLayoutPlotOnly)
+    ################################### Symmetry Tab ###################################
+    # Layout within the tab
+    symmetryWidget=ctk.ctkCollapsibleButton()
+    symmetryWidgetLayout = qt.QFormLayout(symmetryWidget)
+    symmetryWidget.text = "Generate mirrored data for point-wise symmetry analysis"
+    symmetryTabLayout.addRow(symmetryWidget)
     
-  def onModelSelected(self):
-    self.selectorButton.enabled = bool( self.grayscaleSelector.currentPath and self.FudSelect.currentPath)  
-  
-  def onToggleVisualization(self):
-    if self.landmarkVisualizationType.isChecked():
-      self.selectorButton.enabled = True
+    #
+    # Select meshes directory
+    #  
+    self.symMeshDirectory=ctk.ctkPathLineEdit()
+    self.symMeshDirectory.filters = ctk.ctkPathLineEdit.Dirs
+    self.symMeshDirectory.setToolTip( "Select directory containing aligned meshes" )
+    symmetryWidgetLayout.addRow("Aligned mesh directory: ", self.symMeshDirectory)
+    
+    #
+    # Select landmarks directory
+    #
+    self.symLandmarkDirectory=ctk.ctkPathLineEdit()
+    self.symLandmarkDirectory.filters = ctk.ctkPathLineEdit.Dirs
+    self.symLandmarkDirectory.setToolTip( "Select directory containing aligned landmarks" )
+    symmetryWidgetLayout.addRow("Aligned landmark directory: ", self.symLandmarkDirectory)
+    
+    #
+    # Select aligned mesh directory
+    #
+    self.mirrorMeshDirectory=ctk.ctkPathLineEdit()
+    self.mirrorMeshDirectory.filters = ctk.ctkPathLineEdit.Dirs
+    self.mirrorMeshDirectory.setToolTip( "Select output directory for mirrored meshes: " )
+    symmetryWidgetLayout.addRow("Ouput mirror mesh directory: ", self.mirrorMeshDirectory)
+    
+    #
+    # Select aligned landmark directory
+    #
+    self.mirrorLMDirectory=ctk.ctkPathLineEdit()
+    self.mirrorLMDirectory.filters = ctk.ctkPathLineEdit.Dirs
+    self.mirrorLMDirectory.setToolTip( "Select output directory for mirrored landmarks: " )
+    symmetryWidgetLayout.addRow("Output mirror landmark directory: ", self.mirrorLMDirectory)
+
+    #
+    # Axis selection
+    #
+    self.xAxis=qt.QRadioButton()
+    self.xAxis.setChecked(True)
+    symmetryWidgetLayout.addRow('X-Axis', self.xAxis)
+    self.yAxis=qt.QRadioButton()
+    self.yAxis.setChecked(False)
+    symmetryWidgetLayout.addRow('Y-Axis', self.yAxis)
+    self.zAxis=qt.QRadioButton()
+    self.zAxis.setChecked(False)
+    symmetryWidgetLayout.addRow('Z-Axis', self.zAxis)
+    
+    #
+    # Mirror Landmark Index
+    #
+    self.landmarkIndexText=qt.QLineEdit()
+    self.landmarkIndexText.setToolTip("No spaces. Seperate numbers by commas.  Example:  2,1,3,5,4")
+    symmetryWidgetLayout.addRow('Mirror landmark index', self.landmarkIndexText)
+    
+    #
+    # Apply Button
+    #
+    self.mirrorButton = qt.QPushButton("Mirror")
+    self.mirrorButton.toolTip = "Generate mirrored and aligned copies of models and landmarks"
+    self.mirrorButton.enabled = False
+    symmetryWidgetLayout.addRow(self.mirrorButton)
+    
+    # connections
+    self.symMeshDirectory.connect('validInputChanged(bool)', self.onMirrorSelect)
+    self.symLandmarkDirectory.connect('validInputChanged(bool)', self.onMirrorSelect) 
+    self.mirrorMeshDirectory.connect('validInputChanged(bool)', self.onMirrorSelect)
+    self.mirrorLMDirectory.connect('validInputChanged(bool)', self.onMirrorSelect)
+    self.mirrorButton.connect('clicked(bool)', self.onMirrorButton)
+    
+  def onToggleAnalysis(self):
+    if self.analysisTypeSymmetry.checked == True:
+      self.mirrorMeshSelector.enabled = True
+      self.mirrorLMSelector.enabled = True
+      self.symmetryCollapsibleButton.collapsed = False
+      self.symmetryCollapsibleButton.enabled = True
     else:
-      self.grayscaleSelector.enabled = True
-      self.FudSelect.enabled = True
-      print(self.grayscaleSelector.currentPath)
-      print(self.FudSelect.currentPath )
-      self.selectorButton.enabled = bool( self.grayscaleSelector.currentPath is not "") and bool(self.FudSelect.currentPath is not "") 
+      self.mirrorMeshSelector.enabled = False
+      self.mirrorLMSelector.enabled = False
+      self.symmetryCollapsibleButton.collapsed = True
+      self.symmetryCollapsibleButton.enabled = False
   
-  
-  def addLayoutButton(self, layoutID, buttonAction, toolTip, imageFileName, layoutDiscription):
-    layoutManager = slicer.app.layoutManager()
-    layoutManager.layoutLogic().GetLayoutNode().AddLayoutDescription(layoutID, layoutDiscription)
+  def onSubjectIDSelect(self):
+    try:  
+      subjectID = self.subjectIDBox.currentText
+      self.resultNode.GetDisplayNode().SetActiveScalarName(subjectID)
+      self.resultNode.GetDisplayNode().SetAndObserveColorNodeID('vtkMRMLColorTableNodeFilePlasma.txt')
+      print(subjectID)
+    except:
+      print("Error: No array found")
     
-    viewToolBar = slicer.util.mainWindow().findChild('QToolBar', 'ViewToolBar')
-    layoutMenu = viewToolBar.widgetForAction(viewToolBar.actions()[0]).menu()
-    layoutSwitchActionParent = layoutMenu
-    # use `layoutMenu` to add inside layout list, use `viewToolBar` to add next the standard layout list
-    layoutSwitchAction = layoutSwitchActionParent.addAction(buttonAction) # add inside layout list
-    
-    moduleDir = os.path.dirname(slicer.util.modulePath(self.__module__))
-    iconPath = os.path.join(moduleDir, 'Resources/Icons', imageFileName)
-    layoutSwitchAction.setIcon(qt.QIcon(iconPath))
-    layoutSwitchAction.setToolTip(toolTip)
-    layoutSwitchAction.connect('triggered()', lambda layoutId = layoutID: slicer.app.layoutManager().setLayout(layoutId))
-    layoutSwitchAction.setData(layoutID)
-  
-    
-  def onStartRecording(self):
-    #set up sequences for template model and PC TPS transform
-    self.modelSequence=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSequenceNode","GPAModelSequence")
-    self.modelSequence.SetHideFromEditors(0)
-    GPANodeCollection.AddItem(self.modelSequence)
-    self.transformSequence = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSequenceNode","GPATFSequence")
-    self.transformSequence.SetHideFromEditors(0)
-    GPANodeCollection.AddItem(self.transformSequence)
-
-    #Set up a new sequence browser and add sequences
-    browserNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSequenceBrowserNode", "GPASequenceBrowser")
-    browserLogic=slicer.modules.sequences.logic()
-    browserLogic.AddSynchronizedNode(self.modelSequence,self.cloneModelNode,browserNode)
-    browserLogic.AddSynchronizedNode(self.modelSequence,self.cloneLandmarkNode,browserNode)
-    browserLogic.AddSynchronizedNode(self.transformSequence,self.transformNode,browserNode)
-    browserNode.SetRecording(self.transformSequence,'true')
-    browserNode.SetRecording(self.modelSequence,'true')
-
-    #Set up widget to record
-    browserWidget=slicer.modules.sequences.widgetRepresentation()
-    browserWidget.setActiveBrowserNode(browserNode)
-    recordWidget = browserWidget.findChild('qMRMLSequenceBrowserPlayWidget')
-    recordWidget.setRecordingEnabled(1)
-    GPANodeCollection.AddItem(self.modelSequence)
-    GPANodeCollection.AddItem(self.transformSequence)
-    GPANodeCollection.AddItem(browserNode)
-
-    #enable stop recording
-    self.stopRecordButton.enabled = True
-    self.startRecordButton.enabled = False
-
-  def onStopRecording(self):
-    browserWidget=slicer.modules.sequences.widgetRepresentation()
-    recordWidget = browserWidget.findChild('qMRMLSequenceBrowserPlayWidget')
-    recordWidget.setRecordingEnabled(0)
-    slicer.util.selectModule(slicer.modules.sequences)
-    self.stopRecordButton.enabled = False
-    self.startRecordButton.enabled = True
-
+  def onVisualizeMeshSelect(self):
+    if bool(self.meshSelect.currentNode()):
+      self.resultNode = self.meshSelect.currentNode()        
+      self.resultNode.GetDisplayNode().SetVisibility(True)
+      self.resultNode.GetDisplayNode().SetScalarVisibility(True)
+      resultData = self.resultNode.GetPolyData().GetPointData()
+      self.subjectIDBox.enabled = True
+      arrayNumber = resultData.GetNumberOfArrays()
+      if arrayNumber > 0:
+        for i in range(resultData.GetNumberOfArrays()):
+          arrayName = resultData.GetArrayName(i)
+          self.subjectIDBox.addItem(arrayName)
+      else:
+        self.subjectIDBox.clear()
+        self.subjectIDBox.enabled = False
+        
   def cleanup(self):
     pass
-
-  def initializeOnSelect(self):
-    #remove nodes from previous runs
-    temporaryNode=slicer.mrmlScene.GetFirstNodeByName('Mean TPS Transform')
-    if(temporaryNode):
-      GPANodeCollection.RemoveItem(temporaryNode)
-      slicer.mrmlScene.RemoveNode(temporaryNode)
-    
-    temporaryNode=slicer.mrmlScene.GetFirstNodeByName('GPA Warped Volume')
-    if(temporaryNode):
-      GPANodeCollection.RemoveItem(temporaryNode)
-      slicer.mrmlScene.RemoveNode(temporaryNode)
-    
-    temporaryNode=slicer.mrmlScene.GetFirstNodeByName('PC TPS Transform')
-    if(temporaryNode):
-      GPANodeCollection.RemoveItem(temporaryNode)
-      slicer.mrmlScene.RemoveNode(temporaryNode)
-    
+  
   def onSelect(self):
-    self.initializeOnSelect()
-    self.cloneLandmarkNode = self.copyLandmarkNode
-    self.cloneLandmarkNode.CreateDefaultDisplayNodes()
-    self.cloneLandmarkDisplayNode = self.cloneLandmarkNode.GetDisplayNode()
-    if self.modelVisualizationType.isChecked():
-      # get landmark node selected
-      logic = GPALogic()
-      self.sourceLMNode= slicer.util.loadMarkups(self.FudSelect.currentPath)
-      GPANodeCollection.AddItem(self.sourceLMNode)
-      self.sourceLMnumpy=logic.convertFudicialToNP(self.sourceLMNode)
-
-      # remove any excluded landmarks
-      j=len(self.LMExclusionList)
-      if (j != 0):
-        indexToRemove=[]
-        for i in range(j):
-          indexToRemove.append(self.LMExclusionList[i]-1)
-        self.sourceLMnumpy=np.delete(self.sourceLMnumpy,indexToRemove,axis=0)
-
-      # set up transform
-      targetLMVTK=logic.convertNumpyToVTK(self.rawMeanLandmarks)
-      sourceLMVTK=logic.convertNumpyToVTK(self.sourceLMnumpy)
-      VTKTPSMean = vtk.vtkThinPlateSplineTransform()
-      VTKTPSMean.SetSourceLandmarks( sourceLMVTK )
-      VTKTPSMean.SetTargetLandmarks( targetLMVTK )
-      VTKTPSMean.SetBasisToR()  # for 3D transform
-    
-      # transform from selected to mean
-      self.transformMeanNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'Mean TPS Transform')
-      GPANodeCollection.AddItem(self.transformMeanNode)
-      self.transformMeanNode.SetAndObserveTransformToParent( VTKTPSMean )
-
-      # load model node
-      self.modelNode=slicer.util.loadModel(self.grayscaleSelector.currentPath)
-      GPANodeCollection.AddItem(self.modelNode)
-      self.modelDisplayNode = self.modelNode.GetDisplayNode()
-      self.modelNode.SetAndObserveTransformNodeID(self.transformMeanNode.GetID())
-      slicer.vtkSlicerTransformLogic().hardenTransform(self.modelNode)
-
-      # create a PC warped model as clone of the selected model node
-      shNode = slicer.vtkMRMLSubjectHierarchyNode.GetSubjectHierarchyNode(slicer.mrmlScene)
-      itemIDToClone = shNode.GetItemByDataNode(self.modelNode)
-      clonedItemID = slicer.modules.subjecthierarchy.logic().CloneSubjectHierarchyItem(shNode, itemIDToClone)
-      self.cloneModelNode = shNode.GetItemDataNode(clonedItemID)
-      self.cloneModelNode.SetName('PCA Warped Volume')
-      self.cloneModelDisplayNode =  self.cloneModelNode.GetDisplayNode()
-      self.cloneModelDisplayNode.SetColor([0,0,1])
-      GPANodeCollection.AddItem(self.cloneModelNode)
-      visibility = self.meanLandmarkNode.GetDisplayVisibility()
-      self.cloneLandmarkNode.SetDisplayVisibility(visibility)
-      
-      #Clean up
-      GPANodeCollection.RemoveItem(self.sourceLMNode)
-      slicer.mrmlScene.RemoveNode(self.sourceLMNode)
-    
-    else:
-      self.cloneLandmarkNode.SetDisplayVisibility(1)
-      self.meanLandmarkNode.SetDisplayVisibility(1)
-    
-    #set mean landmark color and scale from GUI
-    self.scaleMeanGlyph()
-    self.toggleMeanColor()
-    visibility = self.meanLandmarkNode.GetDisplayNode().GetPointLabelsVisibility()
-    self.cloneLandmarkDisplayNode.SetPointLabelsVisibility(visibility)
-    self.cloneLandmarkDisplayNode.SetTextScale(3)
-        
-    if self.scaleMeanShapeSlider.value == 0:  # If the scale is set to 0, reset to default scale 
-      self.scaleMeanShapeSlider.value = 3
+    self.applyButton.enabled = bool (self.meshDirectory.currentPath and self.landmarkDirectory.currentPath and 
+      self.baseMeshSelector.currentPath and self.baseLMSelector.currentPath
+      and self.alignedMeshDirectory.currentPath and self.alignedLMDirectory.currentPath)
      
-    self.cloneLandmarkDisplayNode.SetGlyphScale(self.scaleMeanShapeSlider.value)
+    self.meanMeshDirectory.currentPath = self.alignedMeshDirectory.currentPath
+    self.meanLMDirectory.currentPath = self.alignedLMDirectory.currentPath
+    
+    self.DCMeshDirectory.currentPath = self.alignedMeshDirectory.currentPath
+    self.DCLandmarkDirectory.currentPath = self.alignedLMDirectory.currentPath
+  
+  def onMirrorSelect(self):
+    self.mirrorButton.enabled = bool (self.symMeshDirectory.currentPath and self.symLandmarkDirectory.currentPath 
+    and self.mirrorMeshDirectory.currentPath and self.mirrorLMDirectory.currentPath)
       
-    #apply custom layout
-    self.assignLayoutDescription()
-
-    # Set up transform for PCA warping
-    self.transformNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLTransformNode', 'PC TPS Transform')
-    GPANodeCollection.AddItem(self.transformNode)
-
-    # Enable PCA warping and recording
-    self.slider1.populateComboBox(self.PCList)
-    self.slider2.populateComboBox(self.PCList)
-    self.applyEnabled = True
-    self.startRecordButton.enabled = True
-    
-  def onApply(self):
-    pc1=self.slider1.boxValue()
-    pc2=self.slider2.boxValue()
-    pcSelected=[pc1,pc2]
-    
-    # get scale values for each pc.
-    sf1=self.slider1.sliderValue()
-    sf2=self.slider2.sliderValue()
-    scaleFactors=np.zeros((2))
-    scaleFactors[0]=sf1/100.0
-    scaleFactors[1]=sf2/100.0
-
-    j=0
-    for i in pcSelected:
-      if i==0:
-       scaleFactors[j]=0.0
-      j=j+1
-
-    logic = GPALogic()
-    #get target landmarks
-    self.LM.ExpandAlongPCs(pcSelected,scaleFactors, self.sampleSizeScaleFactor)
-    target=self.rawMeanLandmarks+self.LM.shift
-    
-    if hasattr(self, 'cloneModelNode'):
-      targetLMVTK=logic.convertNumpyToVTK(target)
-      sourceLMVTK=logic.convertNumpyToVTK(self.rawMeanLandmarks)
+  def onApplyButton(self):
+    logic = DeCALogic()
+    logic.runAlign(self.baseMeshSelector.currentPath, self.baseLMSelector.currentPath, self.meshDirectory.currentPath, 
+      self.landmarkDirectory.currentPath, self.alignedMeshDirectory.currentPath, self.alignedLMDirectory.currentPath)
+  
+  def onMeanSelect(self):
+    self.generateMeanButton.enabled = bool (self.meanMeshDirectory.currentPath and self.meanLMDirectory.currentPath and self.meanOutputDirectory)
       
-      #Set up TPS
-      VTKTPS = vtk.vtkThinPlateSplineTransform()
-      VTKTPS.SetSourceLandmarks( sourceLMVTK )
-      VTKTPS.SetTargetLandmarks( targetLMVTK )
-      VTKTPS.SetBasisToR()  # for 3D transform
-
-      #Connect transform to model
-      self.transformNode.SetAndObserveTransformToParent( VTKTPS )
-      self.cloneLandmarkNode.SetAndObserveTransformNodeID(self.transformNode.GetID())
-      self.cloneModelNode.SetAndObserveTransformNodeID(self.transformNode.GetID()) 
-    
+  def onGenerateMean(self):
+    logic = DeCALogic()
+    logic.runMean(self.meanLMDirectory.currentPath, self.meanMeshDirectory.currentPath, self.meanOutputDirectory.currentPath)
+  
+  def onDCApplyButton(self):
+    logic = DeCALogic()
+    if self.analysisTypeShape.checked == True:
+      logic.runDCAlign(self.DCBaseModelSelector.currentPath, self.DCBaseLMSelector.currentPath, self.DCMeshDirectory.currentPath, 
+      self.DCLandmarkDirectory.currentPath, self.DCOutputDirectory.currentPath, self.CPDCheckBox.checked, self.WriteErrorCheckBox.checked)
+    else: 
+      logic.runDCAlignSymmetric(self.DCBaseModelSelector.currentPath, self.DCBaseLMSelector.currentPath, self.DCMeshDirectory.currentPath, 
+      self.DCLandmarkDirectory.currentPath, self.mirrorMeshSelector.currentPath, self.mirrorLMSelector.currentPath, self.DCOutputDirectory.currentPath, 
+      self.CPDCheckBox.checked, self.WriteErrorCheckBox.checked)
+      
+  def onDCSelect(self):
+    if self.analysisTypeShape.checked == True:
+      self.DCApplyButton.enabled = bool (self.DCMeshDirectory.currentPath and self.DCLandmarkDirectory.currentPath 
+      and self.DCOutputDirectory.currentPath and self.DCBaseModelSelector.currentPath and self.DCBaseLMSelector.currentPath) 
     else:
-      index = 0    
-      for targetLandmark in target:
-        self.cloneLandmarkNode.SetNthControlPointPositionFromArray(index,targetLandmark)  
-        index+=1
-            
-  def onPlotDistribution(self):
-    self.scaleSlider.enabled = True
-    if self.NoneType.isChecked():
-      self.unplotDistributions()
-    elif self.CloudType.isChecked():
-      self.plotDistributionCloud()
+      self.DCApplyButton.enabled = bool (self.DCMeshDirectory.currentPath and self.DCLandmarkDirectory.currentPath
+      and self.DCOutputDirectory.currentPath and self.DCBaseModelSelector.currentPath and self.DCBaseLMSelector.currentPath
+      and self.mirrorMeshSelector.currentPath and self.mirrorLMSelector.currentPath)   
+  
+  def onMirrorButton(self):
+    logic = DeCALogic()
+    axis = [1,1,1]
+    if self.xAxis.isChecked():
+      axis[0] = -1
+    elif self.yAxis.isChecked():
+      axis[1] = -1
     else:
-      self.plotDistributionGlyph(2*self.scaleSlider.value)
-
-  def unplotDistributions(self):
-    modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Point Cloud')
-    if modelNode:
-      slicer.mrmlScene.RemoveNode(modelNode)
-    modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Variance Ellipse')
-    if modelNode:
-      slicer.mrmlScene.RemoveNode(modelNode)
-    modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Variance Sphere')
-    if modelNode:
-      slicer.mrmlScene.RemoveNode(modelNode)
-
-  def plotDistributionCloud(self):
-    self.unplotDistributions()
-    i,j,k=self.LM.lmOrig.shape
-    pt=[0,0,0]
-    #set up vtk point array for each landmark point
-    points = vtk.vtkPoints()
-    points.SetNumberOfPoints(i*k)
-    indexes = vtk.vtkDoubleArray()
-    indexes.SetName('LM Index')
-    pointCounter = 0
-
-    for subject in range(0,k):
-      for landmark in range(0,i):
-        pt=self.LM.lmOrig[landmark,:,subject]
-        points.SetPoint(pointCounter,pt)
-        indexes.InsertNextValue(landmark+1)
-        pointCounter+=1
-
-    #add points to polydata
-    polydata=vtk.vtkPolyData()
-    polydata.SetPoints(points)
-    polydata.GetPointData().SetScalars(indexes)
-
-    #set up glyph for visualizing point cloud
-    sphereSource = vtk.vtkSphereSource()
-    sphereSource.SetRadius(self.sampleSizeScaleFactor/300)
-    glyph = vtk.vtkGlyph3D()
-    glyph.SetSourceConnection(sphereSource.GetOutputPort())
-    glyph.SetInputData(polydata)
-    glyph.ScalingOff()
-    glyph.Update()
-
-    #display
-    modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Point Cloud')
-    if modelNode is None:
-      modelNode = slicer.vtkMRMLModelNode()
-      modelNode.SetName('Landmark Point Cloud')
-      slicer.mrmlScene.AddNode(modelNode)
-      GPANodeCollection.AddItem(modelNode)
-      modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
-      GPANodeCollection.AddItem(modelDisplayNode)
-      modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
-      viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1") #name = "View"+ singletonTag
-      modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
-
-    modelDisplayNode = modelNode.GetDisplayNode()
-    modelDisplayNode.SetScalarVisibility(True)
-    modelDisplayNode.SetActiveScalarName('LM Index')
-    modelDisplayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNodeLabels.txt')
-
-    modelNode.SetAndObservePolyData(glyph.GetOutput())
-
-  def plotDistributionGlyph(self, sliderScale):
-    self.unplotDistributions()
-    varianceMat = self.LM.calcLMVariation(self.sampleSizeScaleFactor,self.skipScalingOption)
-    i,j,k=self.LM.lmOrig.shape
-    pt=[0,0,0]
-    #set up vtk point array for each landmark point
-    points = vtk.vtkPoints()
-    points.SetNumberOfPoints(i)
-    scales = vtk.vtkDoubleArray()
-    scales.SetName("Scales")
-    index = vtk.vtkDoubleArray()
-    index.SetName("Index")
-
-    #set up tensor array to scale ellipses
-    tensors = vtk.vtkDoubleArray()
-    tensors.SetNumberOfTuples(i)
-    tensors.SetNumberOfComponents(9)
-    tensors.SetName("Tensors")
-
-    # get fiducial node for mean landmarks, make just labels visible
-    self.meanLandmarkNode.SetDisplayVisibility(1)
-    self.scaleMeanShapeSlider.value=0
-    for landmark in range(i):
-      pt=self.rawMeanLandmarks[landmark,:]
-      points.SetPoint(landmark,pt)
-      scales.InsertNextValue(sliderScale*(varianceMat[landmark,0]+varianceMat[landmark,1]+varianceMat[landmark,2])/3)
-      tensors.InsertTuple9(landmark,sliderScale*varianceMat[landmark,0],0,0,0,sliderScale*varianceMat[landmark,1],0,0,0,sliderScale*varianceMat[landmark,2])
-      index.InsertNextValue(landmark+1)
-
-    polydata=vtk.vtkPolyData()
-    polydata.SetPoints(points)
-    polydata.GetPointData().AddArray(index)
-
-    if self.EllipseType.isChecked():
-      polydata.GetPointData().SetScalars(index)
-      polydata.GetPointData().SetTensors(tensors)
-      glyph = vtk.vtkTensorGlyph()
-      glyph.ExtractEigenvaluesOff()
-      modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Variance Ellipse')
-      if modelNode is None:
-        modelNode = slicer.vtkMRMLModelNode()
-        modelNode.SetName('Landmark Variance Ellipse')
-        slicer.mrmlScene.AddNode(modelNode)
-        GPANodeCollection.AddItem(modelNode)
-        modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
-        modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
-        viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1") #name = "View"+ singletonTag
-        modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
-        GPANodeCollection.AddItem(modelDisplayNode)
-
-    else:
-      polydata.GetPointData().SetScalars(scales)
-      polydata.GetPointData().AddArray(index)
-      glyph = vtk.vtkGlyph3D()
-      modelNode=slicer.mrmlScene.GetFirstNodeByName('Landmark Variance Sphere')
-      if modelNode is None:
-        modelNode = slicer.vtkMRMLModelNode()
-        modelNode.SetName('Landmark Variance Sphere')
-        slicer.mrmlScene.AddNode(modelNode)
-        GPANodeCollection.AddItem(modelNode)
-        modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
-        modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
-        viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1") #name = "View"+ singletonTag
-        modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
-        GPANodeCollection.AddItem(modelDisplayNode)
-
-    sphereSource = vtk.vtkSphereSource()
-    sphereSource.SetThetaResolution(64)
-    sphereSource.SetPhiResolution(64)
-
-    glyph.SetSourceConnection(sphereSource.GetOutputPort())
-    glyph.SetInputData(polydata)
-    glyph.Update()
-
-    modelNode.SetAndObservePolyData(glyph.GetOutput())
-    modelDisplayNode = modelNode.GetDisplayNode()
-    modelDisplayNode.SetScalarVisibility(True)
-    modelDisplayNode.SetActiveScalarName('Index') #color by landmark number
-    modelDisplayNode.SetAndObserveColorNodeID('vtkMRMLColorTableNodeLabels.txt')
-
+      axis[2] = -1
+      
+    logic.runMirroring(self.symMeshDirectory.currentPath, self.symLandmarkDirectory.currentPath, self.mirrorMeshDirectory.currentPath, 
+      self.mirrorLMDirectory.currentPath, axis, self.landmarkIndexText.text)  
+      
 #
-# GPALogic
+# DeCALogic
 #
 
-class GPALogic(ScriptedLoadableModuleLogic):
+class DeCALogic(ScriptedLoadableModuleLogic):
   """This class should implement all the actual
-  computation done by your module.  The interface
-  should be such that other python code can import
-  this class and make use of the functionality without
-  requiring an instance of the Widget.
-  Uses ScriptedLoadableModuleLogic base class, available at:
-  https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-  """
-
-  def hasImageData(self,volumeNode):
-    """This is an example logic method that
-    returns true if the passed in volume
-    node has valid image data
+    computation done by your module.  The interface
+    should be such that other python code can import
+    this class and make use of the functionality without
+    requiring an instance of the Widget.
+    Uses ScriptedLoadableModuleLogic base class, available at:
+    https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-    if not volumeNode:
-      logging.debug('hasImageData failed: no volume node')
-      return False
-    if volumeNode.GetImageData() is None:
-      logging.debug('hasImageData failed: no image data in volume node')
-      return False
-    return True
-
-  def isValidInputOutputData(self, inputVolumeNode, outputVolumeNode):
-    """Validates if the output is not the same as input
-    """
-    if not inputVolumeNode:
-      logging.debug('isValidInputOutputData failed: no input volume node defined')
-      return False
-    if not outputVolumeNode:
-      logging.debug('isValidInputOutputData failed: no output volume node defined')
-      return False
-    if inputVolumeNode.GetID()==outputVolumeNode.GetID():
-      logging.debug('isValidInputOutputData failed: input and output volume is the same. Create a new volume for output to avoid this error.')
-      return False
-    return True
-
-  def takeScreenshot(self,name,description,type=-1):
-    # show the message even if not taking a screen shot
-    slicer.util.delayDisplay('Take screenshot: '+description+'.\nResult is available in the Annotations module.', 3000)
-
-    lm = slicer.app.layoutManager()
-    # switch on the type to get the requested window
-    widget = 0
-    if type == slicer.qMRMLScreenShotDialog.FullLayout:
-      # full layout
-      widget = lm.viewport()
-    elif type == slicer.qMRMLScreenShotDialog.ThreeD:
-      # just the 3D window
-      widget = lm.threeDWidget(0).threeDView()
-    elif type == slicer.qMRMLScreenShotDialog.Red:
-      # red slice window
-      widget = lm.sliceWidget("Red")
-    elif type == slicer.qMRMLScreenShotDialog.Yellow:
-      # yellow slice window
-      widget = lm.sliceWidget("Yellow")
-    elif type == slicer.qMRMLScreenShotDialog.Green:
-      # green slice window
-      widget = lm.sliceWidget("Green")
+  def runMirroring(self, meshDirectory, lmDirectory, mirrorMeshDirectory, mirrorLMDirectory, mirrorAxis, mirrorIndexText):
+    mirrorMatrix = vtk.vtkMatrix4x4()
+    mirrorMatrix.SetElement(0, 0, mirrorAxis[0])
+    mirrorMatrix.SetElement(1, 1, mirrorAxis[1])
+    mirrorMatrix.SetElement(2, 2, mirrorAxis[2])
+    
+    lmFileList = os.listdir(lmDirectory)
+    point=[0,0,0]
+    
+    #get order of mirrored sets
+    if len(mirrorIndexText) != 0:
+      mirrorIndexList=mirrorIndexText.split(",")
+      mirrorIndexList=[np.int(x) for x in mirrorIndexList]
+      mirrorIndex=np.asarray(mirrorIndexList)
     else:
-      # default to using the full window
-      widget = slicer.util.mainWindow()
-      # reset the type so that the node is set correctly
-      type = slicer.qMRMLScreenShotDialog.FullLayout
-
-    # grab and convert to vtk image data
-    qimage = ctk.ctkWidgetsUtils.grabWidget(widget)
-    imageData = vtk.vtkImageData()
-    slicer.qMRMLUtils().qImageToVtkImageData(qimage,imageData)
-
-    annotationLogic = slicer.modules.annotations.logic()
-    annotationLogic.CreateSnapShot(name, description, type, 1, imageData)
+      print("Error: no landmark index for mirrored mesh")
     
-  def mergeMatchs(self, topDir, lmToRemove):
-    # initial data array
-    dirs, files, matchList = self.walk_dir_current(topDir)
-    suffix = files[0].split(".")[-1]
-    isJSON=False
-    if suffix == "fcsv":
-      landmarks=self.initDataArray(dirs,files[0],len(matchList))
-      matchedfiles=[]
-      for i in range(len(matchList)):
-        tmp1=self.importLandMarks(matchList[i]+'.'+ suffix)
-        landmarks[:,:,i] = tmp1
-        matchedfiles.append(os.path.basename(matchList[i]))
-    elif suffix == "json":
-      isJSON=True
-      import pandas
-      firstFilename = os.path.join(dirs[0], files[0])
-      tempTable = pandas.DataFrame.from_dict(pandas.read_json(firstFilename)['markups'][0]['controlPoints'])
-      landmarkNumber = len(tempTable)
-      landmarks=np.zeros(shape=(landmarkNumber,3,len(matchList)))
-      matchedfiles=[]
-      for i in range(len(matchList)):
-        filename = os.path.join(dirs[0], files[i])
-        tmp1=pandas.DataFrame.from_dict(pandas.read_json(filename)['markups'][0]['controlPoints'])
-        lmArray = tmp1['position'].to_numpy()
-        for j in range(landmarkNumber):
-          landmarks[j,:,i]=lmArray[j]
-        matchedfiles.append(os.path.basename(matchList[i]))
-    if len(lmToRemove)>0:
-      indexToRemove=[]
-      for i in range(len(lmToRemove)):
-        indexToRemove.append(lmToRemove[i]-1)
-      landmarks=np.delete(landmarks,indexToRemove,axis=0)
+    for meshFileName in os.listdir(meshDirectory):
+      if(not meshFileName.startswith(".")):
+        meshName = os.path.splitext(meshFileName)[0]
+        meshFilePath = os.path.join(meshDirectory, meshFileName)
+        regex = re.compile(r'\d+')
+        subjectID = [int(x) for x in regex.findall(meshFileName)][-1]
+        for lmFileName in lmFileList:
+          if str(subjectID) in lmFileName:
+            print(lmFileName + " found matching: " + meshFileName)
+            # if mesh and lm file with same subject id exist, load into scene
+            currentMeshNode = slicer.util.loadModel(meshFilePath)
+            lmFilePath = os.path.join(lmDirectory, lmFileName)
+            currentLMNode = slicer.util.loadMarkups(lmFilePath)
     
-    return landmarks, matchedfiles, isJSON
-
-  def createMatchList(self, topDir,suffix):
-   #eliminate requirement for 2 landmark files
-   #retains data structure in case filtering is required later.
-    validFiles=[]
-    for root, dirs, files in os.walk(topDir):
-      for filename in files:
-        if fnmatch.fnmatch(filename,"*"+suffix):
-          validFiles.append(os.path.join(root, filename[:-5]))
-    invalidFiles=[]
-    return validFiles, invalidFiles
-
-  def importLandMarks(self, filePath):
-    """Imports the landmarks from a .fcsv file. Does not import sample if a  landmark is -1000
-    Adjusts the resolution is log(nhrd) file is found returns kXd array of landmark data. k=# of landmarks d=dimension
-    """
-    # import data file
-    datafile=open(filePath,'r')
-    data=[]
-    for row in datafile:
-      if not fnmatch.fnmatch(row[0],"#*"):
-        data.append(row.strip().split(','))
-    # Make Landmark array
-    dataArray=np.zeros(shape=(len(data),3))
-    j=0
-    sorter=[]
-    for i in data:
-      tmp=np.array(i)[1:4]
-      dataArray[j,0:3]=tmp
-
-      x=np.array(i).shape
-      j=j+1
-    slicer.app.processEvents()
-    return dataArray
-
-  def walk_dir(self, top_dir):
-    """
-    Returns a list of all fcsv files in a directory, including sub-directories.
-    """
-    dir_to_explore=[]
-    file_to_open=[]
-    for path, dir, files in os.walk(top_dir):
-      for filename in files:
-        if fnmatch.fnmatch(filename,"*.fcsv") or fnmatch.fnmatch(filename,"*.json"):
-          dir_to_explore.append(path)
-          file_to_open.append(filename)
-    return dir_to_explore, file_to_open
+            targetPoints = vtk.vtkPoints()
+            for i in range(currentLMNode.GetNumberOfMarkups()):
+              currentLMNode.GetMarkupPoint(0,i,point)
+              targetPoints.InsertNextPoint(point)
+      
+            mirrorTransform = vtk.vtkTransform()
+            mirrorTransform.SetMatrix(mirrorMatrix)
+            mirrorTransformNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode","Mirror")
+            mirrorTransformNode.SetAndObserveTransformToParent(mirrorTransform)
+ 
+            # apply transform to the current surface mesh and landmarks
+            currentMeshNode.SetAndObserveTransformNodeID(mirrorTransformNode.GetID()) 
+            currentLMNode.SetAndObserveTransformNodeID(mirrorTransformNode.GetID())  
+            slicer.vtkSlicerTransformLogic().hardenTransform(currentMeshNode)
+            slicer.vtkSlicerTransformLogic().hardenTransform(currentLMNode)
+            
+            # apply rigid transformation
+            sourcePoints = vtk.vtkPoints()
+            mirrorLMNode =slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode",meshName)
+            for i in range(currentLMNode.GetNumberOfMarkups()):
+              currentLMNode.GetMarkupPoint(0,mirrorIndex[i],point)
+              mirrorLMNode.AddFiducialFromArray(point)
+              sourcePoints.InsertNextPoint(point)
+              
+            rigidTransform = vtk.vtkLandmarkTransform()
+            rigidTransform.SetSourceLandmarks( sourcePoints )
+            rigidTransform.SetTargetLandmarks( targetPoints )
+            rigidTransform.SetModeToRigidBody()
+            rigidTransformNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode","Rigid")
+            rigidTransformNode.SetAndObserveTransformToParent(rigidTransform)
+            
+            currentMeshNode.SetAndObserveTransformNodeID(rigidTransformNode.GetID()) 
+            mirrorLMNode.SetAndObserveTransformNodeID(rigidTransformNode.GetID())  
+            slicer.vtkSlicerTransformLogic().hardenTransform(currentMeshNode)
+            slicer.vtkSlicerTransformLogic().hardenTransform(mirrorLMNode)
+            
+            # save output files
+            outputMeshName = meshName + '_mirror.ply'
+            outputMeshPath = os.path.join(mirrorMeshDirectory, outputMeshName) 
+            slicer.util.saveNode(currentMeshNode, outputMeshPath)
+            outputLMName = meshName + '_mirror.fcsv'
+            outputLMPath = os.path.join(mirrorLMDirectory, outputLMName) 
+            slicer.util.saveNode(mirrorLMNode, outputLMPath)
+            
+            # clean up
+            slicer.mrmlScene.RemoveNode(currentLMNode)
+            slicer.mrmlScene.RemoveNode(currentMeshNode)
+            slicer.mrmlScene.RemoveNode(mirrorTransformNode)
+            slicer.mrmlScene.RemoveNode(rigidTransformNode)
+            slicer.mrmlScene.RemoveNode(mirrorLMNode)
     
-  def walk_dir_current(self, top_dir):
-    """
-    Returns a list of all fcsv files in current directory
-    """
-    dirs=[]
-    validFiles=[]
-    files = [f for f in os.listdir(top_dir) if os.path.isfile(os.path.join(top_dir,f))]        
-    for filename in files:
-      if fnmatch.fnmatch(filename,"*.fcsv") or fnmatch.fnmatch(filename,"*.json"):
-        dirs.append(top_dir)
-        validFiles.append(os.path.join(top_dir, filename[:-5]))
-    return dirs, files, validFiles
-
-  def initDataArray(self, dirs, file,k):
-    """
-    returns an np array for the storage of the landmarks.
-    """
-    j=3
-    # import data file
-    datafile=open(dirs[0]+os.sep+file,'r')
-    data=[]
-    for row in datafile:
-      if not fnmatch.fnmatch(row[0],"#*"):
-        data.append(row.strip().split(','))
-    i= len(data)
-    landmarks=np.zeros(shape=(i,j,k))
-    return landmarks
-
-  def dist(self, a):
-    """
-    Computes the euclidean distance matrix for nXK points in a 3D space. So the input matrix is nX3xk
-    Returns a nXnXk matrix
-    """
-    id,jd,kd=a.shape
-    fnx = lambda q : q - np.reshape(q, (id, 1,kd))
-    dx=fnx(a[:,0,:])
-    dy=fnx(a[:,1,:])
-    dz=fnx(a[:,2,:])
-    return (dx**2.0+dy**2.0+dz**2.0)**0.5
-
-  def dist2(self, a):
+  def runDCAlign(self, baseMeshPath, baseLMPath, meshDirectory, landmarkDirectory, outputDirectory, optionCPD, optionErrorOutput):
+    baseNode = slicer.util.loadModel(baseMeshPath)
+    baseMesh = baseNode.GetPolyData()
+    baseLandmarks=self.fiducialNodeToPolyData(baseLMPath).GetPoints()
+    models = self.importMeshes(meshDirectory, 'ply')
+    landmarks = self.importLandmarks(landmarkDirectory)
+    self.outputDirectory = outputDirectory
+    if not(optionCPD):
+      denseCorrespondenceGroup = self.denseCorrespondenceBaseMesh(landmarks, models, baseMesh, baseLandmarks, optionErrorOutput)
+    else: 
+      denseCorrespondenceGroup = self.denseCorrespondenceCPD(landmarks, models, baseMesh, baseLandmarks, optionErrorOutput)
+      
+    self.addMagnitudeFeature(denseCorrespondenceGroup, baseMesh)
+    
+    # save results to output directory
+    outputModelName = 'decaResultModel.vtp'
+    outputModelPath = os.path.join(outputDirectory, outputModelName) 
+    slicer.util.saveNode(baseNode, outputModelPath)
+    
+  def runDCAlignSymmetric(self, baseMeshPath, baseLMPath, meshDir, landmarkDir, mirrorMeshDir, mirrorLandmarkDir, outputDir, optionCPD, optionErrorOutput):
+    baseNode = slicer.util.loadModel(baseMeshPath)
+    baseMesh = baseNode.GetPolyData()
+    baseLandmarks=self.fiducialNodeToPolyData(baseLMPath).GetPoints()
+    models = self.importMeshes(meshDir, 'ply')
+    landmarks = self.importLandmarks(landmarkDir)
+    mirrorModels = self.importMeshes(mirrorMeshDir, 'ply')
+    mirrorLandmarks = self.importLandmarks(mirrorLandmarkDir)
+    self.outputDirectory = outputDir
+    if not(optionCPD):
+      denseCorrespondenceGroup = self.denseCorrespondenceBaseMesh(landmarks, models, baseMesh, baseLandmarks, optionErrorOutput)
+      denseCorrespondenceGroupMirror = self.denseCorrespondenceBaseMesh(mirrorLandmarks, mirrorModels, baseMesh, baseLandmarks, optionErrorOutput)
+      
+    else: 
+      denseCorrespondenceGroup = self.denseCorrespondenceCPD(mirrorLandmarks, models, baseMesh, baseLandmarks, optionErrorOutput)
+      denseCorrespondenceGroupMirror = self.denseCorrespondenceCPD(mirrorLandmarks, mirrorModels, baseMesh, baseLandmarks, optionErrorOutput)
+      
+    self.addMagnitudeFeatureSymmetry(denseCorrespondenceGroup, denseCorrespondenceGroupMirror, baseMesh)
+    
+    # save results to output directory
+    outputModelName = 'decaSymmetryResultModel.vtp'
+    outputModelPath = os.path.join(outputDir, outputModelName) 
+    slicer.util.saveNode(baseNode, outputModelPath)
+      
+  def runMean(self, landmarkDirectory, meshDirectory, outputDirectory):
+    models = self.importMeshes(meshDirectory, 'ply')
+    landmarks = self.importLandmarks(landmarkDirectory)
+    [denseCorrespondenceGroup, closestToMeanIndex] = self.denseCorrespondence(landmarks, models)
+    print("Sample closest to mean: ", closestToMeanIndex)
+    # compute mean model
+    averagePolyData = self.computeAverageModelFromGroup(denseCorrespondenceGroup, closestToMeanIndex)
+    averageModelNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelNode', 'meanTemplate')
+    averageModelNode.CreateDefaultDisplayNodes()
+    averageModelNode.SetAndObservePolyData(averagePolyData)
+     # compute mean landmarks
+    averageLandmarkNode = self.computeAverageLM(landmarks)     
+    averageLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(False)
+    
+    # save results to output directory
+    outputModelName = 'decaMeanModel.ply'
+    outputModelPath = os.path.join(outputDirectory, outputModelName) 
+    slicer.util.saveNode(averageModelNode, outputModelPath)
+    
+    outputLMName = 'decaMeanModel.fcsv'
+    outputLMPath = os.path.join(outputDirectory, outputLMName) 
+    slicer.util.saveNode(averageLandmarkNode, outputLMPath)
+    
+  def runAlign(self, baseMeshPath, baseLMPath, meshDirectory, lmDirectory, ouputMeshDirectory, outputLMDirectory):
+    targetPoints = vtk.vtkPoints()
+    point=[0,0,0]
+    
+    baseMeshNode = slicer.util.loadModel(baseMeshPath)
+    baseLMNode = slicer.util.loadMarkups(baseLMPath)
+    # Set up base points for transform
+    for i in range(baseLMNode.GetNumberOfFiducials()):
+      baseLMNode.GetMarkupPoint(0,i,point)
+      targetPoints.InsertNextPoint(point)
+    
+    # Transform each subject to base
+    for meshFileName in os.listdir(meshDirectory):
+      if(not meshFileName.startswith(".")):
+        lmFileList = os.listdir(lmDirectory)
+        meshFilePath = os.path.join(meshDirectory, meshFileName)
+        regex = re.compile(r'\d+')
+        subjectID = [int(x) for x in regex.findall(meshFileName)][-1]
+        for lmFileName in lmFileList:
+          if str(subjectID) in lmFileName:
+            print(lmFileName + " found matching: " + meshFileName)
+            # if mesh and lm file with same subject id exist, load into scene
+            currentMeshNode = slicer.util.loadModel(meshFilePath)
+            lmFilePath = os.path.join(lmDirectory, lmFileName)
+            currentLMNode = slicer.util.loadMarkups(lmFilePath)
+            
+            # set up transform between base lms and current lms
+            sourcePoints = vtk.vtkPoints()
+            for i in range(currentLMNode.GetNumberOfMarkups()):
+              currentLMNode.GetMarkupPoint(0,i,point)
+              sourcePoints.InsertNextPoint(point)
+          
+            transform = vtk.vtkLandmarkTransform()
+            transform.SetSourceLandmarks( sourcePoints )
+            transform.SetTargetLandmarks( targetPoints )
+            transform.SetModeToRigidBody()  
+            
+            transformNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode","Rigid")
+            transformNode.SetAndObserveTransformToParent(transform)
+           
+            # apply transform to the current surface mesh and landmarks
+            currentMeshNode.SetAndObserveTransformNodeID(transformNode.GetID()) 
+            currentLMNode.SetAndObserveTransformNodeID(transformNode.GetID())  
+            slicer.vtkSlicerTransformLogic().hardenTransform(currentMeshNode)
+            slicer.vtkSlicerTransformLogic().hardenTransform(currentLMNode)
+            
+            # save output files
+            outputMeshName = meshFileName + '_align.ply'
+            outputMeshPath = os.path.join(ouputMeshDirectory, outputMeshName) 
+            slicer.util.saveNode(currentMeshNode, outputMeshPath)
+            outputLMName = meshFileName + '_align.fcsv'
+            outputLMPath = os.path.join(outputLMDirectory, outputLMName) 
+            slicer.util.saveNode(currentLMNode, outputLMPath)
+            
+            # clean up
+            slicer.mrmlScene.RemoveNode(currentLMNode)
+            slicer.mrmlScene.RemoveNode(currentMeshNode)
+            slicer.mrmlScene.RemoveNode(transformNode)        
+          
+  def distanceMatrix(self, a):
     """
     Computes the euclidean distance matrix for n points in a 3D space
     Returns a nXn matrix
@@ -1904,318 +744,383 @@ class GPALogic(ScriptedLoadableModuleLogic):
     dy=fnx(a[:,1])
     dz=fnx(a[:,2])
     return (dx**2.0+dy**2.0+dz**2.0)**0.5
-
-  #plotting functions
-
-  def makeScatterPlotWithFactors(self, data, files, factors,title,xAxis,yAxis,pcNumber):
-    #create two tables for the first two factors and then check for a third
-    #check if there is a table node has been created
-    numPoints = len(data)
-    uniqueFactors, factorCounts = np.unique(factors, return_counts=True)
-    factorNumber = len(uniqueFactors)
-
-    #Set up chart
-    plotChartNode=slicer.mrmlScene.GetFirstNodeByName("Chart_PCA_cov" + xAxis + "v" +yAxis)
-    if plotChartNode is None:
-      plotChartNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotChartNode", "Chart_PCA_cov" + xAxis + "v" +yAxis)
-      GPANodeCollection.AddItem(plotChartNode)
-    else:
-      plotChartNode.RemoveAllPlotSeriesNodeIDs()
-
-    # Plot all series
-    for factorIndex in range(len(uniqueFactors)):
-      factor = uniqueFactors[factorIndex]
-      tableNode=slicer.mrmlScene.GetFirstNodeByName('PCA Scatter Plot Table Factor ' + factor)
-      if tableNode is None:
-        tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", 'PCA Scatter Plot Table Factor ' + factor)
-        GPANodeCollection.AddItem(tableNode)
-      else:
-        tableNode.RemoveAllColumns()    #clear previous data from columns
-
-      # Set up columns for X,Y, and labels
-      labels=tableNode.AddColumn()
-      labels.SetName('Subject ID')
-      tableNode.SetColumnType('Subject ID',vtk.VTK_STRING)
-
-      for i in range(pcNumber):
-        pc=tableNode.AddColumn()
-        colName="PC" + str(i+1)
-        pc.SetName(colName)
-        tableNode.SetColumnType(colName, vtk.VTK_FLOAT)
-
-      factorCounter=0
-      table = tableNode.GetTable()
-      table.SetNumberOfRows(factorCounts[factorIndex])
-      for i in range(numPoints):
-        if (factors[i] == factor):
-          table.SetValue(factorCounter, 0,files[i])
-          for j in range(pcNumber):
-            table.SetValue(factorCounter, j+1, data[i,j])
-          factorCounter+=1
-
-      plotSeriesNode=slicer.mrmlScene.GetFirstNodeByName("Series_PCA_" + factor + "_" + xAxis + "v" +yAxis)
-      if plotSeriesNode is None:
-        plotSeriesNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", factor)
-        GPANodeCollection.AddItem(plotSeriesNode)
-      # Create data series from table
-      plotSeriesNode.SetAndObserveTableNodeID(tableNode.GetID())
-      plotSeriesNode.SetXColumnName(xAxis)
-      plotSeriesNode.SetYColumnName(yAxis)
-      plotSeriesNode.SetLabelColumnName('Subject ID')
-      plotSeriesNode.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
-      plotSeriesNode.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
-      plotSeriesNode.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleSquare)
-      plotSeriesNode.SetUniqueColor()
-      # Add data series to chart
-      plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode.GetID())
-
-    # Set up view options for chart
-    plotChartNode.SetTitle('PCA Scatter Plot with factors')
-    plotChartNode.SetXAxisTitle(xAxis)
-    plotChartNode.SetYAxisTitle(yAxis)
-    layoutManager = slicer.app.layoutManager()
-
-    plotWidget = layoutManager.plotWidget(0)
-    plotViewNode = plotWidget.mrmlPlotViewNode()
-    plotViewNode.SetPlotChartNodeID(plotChartNode.GetID())
-
-  def makeScatterPlot(self, data, files, title,xAxis,yAxis,pcNumber):
-    numPoints = len(data)
-    #check if there is a table node has been created
-    tableNode=slicer.mrmlScene.GetFirstNodeByName('PCA Scatter Plot Table')
-    if tableNode is None:
-      tableNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTableNode", 'PCA Scatter Plot Table')
-      GPANodeCollection.AddItem(tableNode)
-
-      #set up columns for X,Y, and labels
-      labels=tableNode.AddColumn()
-      labels.SetName('Subject ID')
-      tableNode.SetColumnType('Subject ID',vtk.VTK_STRING)
-
-      for i in range(pcNumber):
-        pc=tableNode.AddColumn()
-        colName="PC" + str(i+1)
-        pc.SetName(colName)
-        tableNode.SetColumnType(colName, vtk.VTK_FLOAT)
+  
+  def numpyToFiducialNode(self, numpyArray, nodeName):
+    fiducialNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',nodeName)
+    for point in numpyArray:
+      fiducialNode.AddFiducialFromArray(point) 
+    return fiducialNode
+        
+  def computeAverageLM(self, fiducialGroup):
+    sampleNumber = fiducialGroup.GetNumberOfBlocks()
+    pointNumber = fiducialGroup.GetBlock(0).GetNumberOfPoints()
+    groupArray_np = np.empty((pointNumber,3,sampleNumber))
+    for i in range(sampleNumber):
+      pointData = fiducialGroup.GetBlock(i).GetPoints().GetData()
+      pointData_np = vtk_np.vtk_to_numpy(pointData)
+      groupArray_np[:,:,i] = pointData_np
+    #Calculate mean point positions of aligned group
+    averagePoints_np = np.mean(groupArray_np, axis=2)
+    averageLMNode = self.numpyToFiducialNode(averagePoints_np, "MeanTemplateLM")
+    return averageLMNode  
+  
+  def fiducialNodeToPolyData(self, path):
+    point = [0,0,0]
+    polydataPoints = vtk.vtkPolyData()
+    points = vtk.vtkPoints()
+    [success,fiducialNode] = slicer.util.loadMarkupsFiducialList(path)
+    if not success:
+      print("Could not load landmarks: ", inputFilePath)
+      return
+    for i in range(fiducialNode.GetNumberOfFiducials()):
+      fiducialNode.GetMarkupPoint(0,i,point)
+      points.InsertNextPoint(point)    
+    polydataPoints.SetPoints(points)
+    slicer.mrmlScene.RemoveNode(fiducialNode)
+    return polydataPoints
       
-      table = tableNode.GetTable()
-      table.SetNumberOfRows(numPoints)
-      for i in range(numPoints):
-        table.SetValue(i, 0,files[i])
-        for j in range(pcNumber):
-            table.SetValue(i, j+1, data[i,j])
+  def importLandmarks(self, topDir):
+    fiducialGroup = vtk.vtkMultiBlockDataGroupFilter()
+    for file in sorted(os.listdir(topDir)):
+      if file.endswith(".fcsv"):
+        print("reading: ", file)
+        inputFilePath = os.path.join(topDir, file)
+        # may want to replace with vtk reader
+        polydataPoints = self.fiducialNodeToPolyData(inputFilePath)
+        fiducialGroup.AddInputData(polydataPoints)
+    fiducialGroup.Update()
+    return fiducialGroup.GetOutput()
+  
+  def importMeshes(self, topDir, extension):
+      modelGroup = vtk.vtkMultiBlockDataGroupFilter()
+      for file in sorted(os.listdir(topDir)):
+        if file.endswith(extension):
+          print("reading: ", file)
+          inputFilePath = os.path.join(topDir, file)
+          # may want to replace with vtk reader
+          modelNode = slicer.util.loadModel(inputFilePath)
+          modelGroup.AddInputData(modelNode.GetPolyData())
+          slicer.mrmlScene.RemoveNode(modelNode)
+      modelGroup.Update()
+      return modelGroup.GetOutput()
+      
+  def procrustesImposition(self, originalLandmarks, sizeOption):
+    procrustesFilter = vtk.vtkProcrustesAlignmentFilter()
+    if(sizeOption):
+      procrustesFilter.GetLandmarkTransform().SetModeToRigidBody()
+  
+    procrustesFilter.SetInputData(originalLandmarks)
+    procrustesFilter.Update()
+    meanShape = procrustesFilter.GetMeanPoints()
+    return [meanShape, procrustesFilter.GetOutput()]
 
-    plotSeriesNode1=slicer.mrmlScene.GetFirstNodeByName("Series_PCA" + xAxis + "v" +yAxis)
-    if plotSeriesNode1 is None:
-      plotSeriesNode1 = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotSeriesNode", "Series_PCA" + xAxis + "v" +yAxis)
-      GPANodeCollection.AddItem(plotSeriesNode1)
+  def getClosestToMeanIndex(self, meanShape, alignedPoints):
+    import operator
+    sampleNumber = alignedPoints.GetNumberOfBlocks() 
+    procrustesDistances = []
+      
+    for i in range(sampleNumber):      
+      alignedShape = alignedPoints.GetBlock(i)
+      meanPoint = [0,0,0]
+      alignedPoint = [0,0,0]
+      distance = 0
+      for j in range(meanShape.GetNumberOfPoints()):
+        meanShape.GetPoint(j,meanPoint)
+        alignedShape.GetPoint(j,alignedPoint)
+        distance += np.sqrt(vtk.vtkMath.Distance2BetweenPoints(meanPoint,alignedPoint))
+        
+      procrustesDistances.append(distance)
+    
+    min_index, min_value = min(enumerate(procrustesDistances), key=operator.itemgetter(1))
+    return min_index
+    
+  def denseCorrespondence(self, originalLandmarks, originalMeshes, writeErrorOption=False):
+    meanShape, alignedPoints = self.procrustesImposition(originalLandmarks, False)
+    sampleNumber = alignedPoints.GetNumberOfBlocks()
+    denseCorrespondenceGroup = vtk.vtkMultiBlockDataGroupFilter()
+    # get base mesh as the closest to the mean shape
+    baseIndex = self.getClosestToMeanIndex(meanShape, alignedPoints)
+    baseMesh = originalMeshes.GetBlock(baseIndex)
+    baseLandmarks = originalLandmarks.GetBlock(baseIndex).GetPoints()
+    for i in range(sampleNumber):
+      correspondingMesh = self.denseSurfaceCorrespondencePair(originalMeshes.GetBlock(i), 
+      originalLandmarks.GetBlock(i).GetPoints(), alignedPoints.GetBlock(i).GetPoints(), 
+      baseMesh, baseLandmarks, meanShape, str(i))
+      denseCorrespondenceGroup.AddInputData(correspondingMesh)
+  
+    denseCorrespondenceGroup.Update()
+    return denseCorrespondenceGroup.GetOutput(), baseIndex
+  
+  def denseCorrespondenceCPD(self, originalLandmarks, originalMeshes, baseMesh, baseLandmarks, writeErrorOption=False):
+    meanShape, alignedPoints = self.procrustesImposition(originalLandmarks, False)
+    sampleNumber = alignedPoints.GetNumberOfBlocks()
+    denseCorrespondenceGroup = vtk.vtkMultiBlockDataGroupFilter()
+    
+    # assign parameters for CPD 
+    parameters = {
+      "SpacingTolerance": .04,
+      "CPDIterations": 100,
+      "CPDTolerence": 0.001,
+      "alpha": 2,
+      "beta": 2,
+     }
+    
+    for i in range(sampleNumber):
+      correspondingPoints = self.runCPDRegistration(originalMeshes.GetBlock(i), baseMesh, parameters)
+      # convert to vtkPoints 
+      correspondingMesh = self.convertPointsToVTK(correspondingPoints)
+      correspondingMesh.SetPolys(baseMesh.GetPolys())
+      # convert to polydata
+      denseCorrespondenceGroup.AddInputData(correspondingMesh)
+      # write ouput
+      if writeErrorOption:
+        plyWriterSubject = vtk.vtkPLYWriter()
+        plyWriterSubject.SetFileName("/Users/sararolfe/Dropbox/SlicerWorkspace/SMwSML/Data/UBC/DECAOutCPD/" + str(i) + ".ply")
+        plyWriterSubject.SetInputData(correspondingMesh)
+        plyWriterSubject.Write()
+    
+        plyWriterBase = vtk.vtkPLYWriter()
+        plyWriterBase.SetFileName("/Users/sararolfe/Dropbox/SlicerWorkspace/SMwSML/Data/UBC/DECAOutCPD/base.ply")
+        plyWriterBase.SetInputData(baseMesh)
+        plyWriterBase.Write()
+  
+    denseCorrespondenceGroup.Update()
+    return denseCorrespondenceGroup.GetOutput()
+    
+  def runCPDRegistration(self,sourceData, targetData, parameters):
+    from open3d import geometry
+    from open3d import utility
+    
+    # Downsample meshes
+    sourceFilter=vtk.vtkCleanPolyData()
+    sourceFilter.SetTolerance(parameters["SpacingTolerance"])
+    sourceFilter.SetInputData(sourceData)
+    sourceFilter.Update()
+    #sourceArray = sourceFilter.GetOutput().GetPoints().GetData()
+    sourceArray = sourceData.GetPoints().GetData()
+    
+    targetFilter=vtk.vtkCleanPolyData()
+    targetFilter.SetTolerance(parameters["SpacingTolerance"])
+    targetFilter.SetInputData(targetData)
+    targetFilter.Update()
+    #targetArray = targetFilter.GetOutput().GetPoints().GetData()
+    targetArray = targetData.GetPoints().GetData()
+    
+    # Convert to pointcloud for scaling
+    sourceArray_np = vtk_np.vtk_to_numpy(sourceArray)
+    targetArray_np = vtk_np.vtk_to_numpy(targetArray)
+    sourceCloud = geometry.PointCloud()
+    sourceCloud.points = utility.Vector3dVector(sourceArray_np)
+    targetCloud = geometry.PointCloud()
+    targetCloud.points = utility.Vector3dVector(targetArray_np)
+    cloudSize = np.max(targetCloud.get_max_bound() - targetCloud.get_min_bound())
+    targetCloud.scale(25 / cloudSize, center = False)
+    sourceCloud.scale(25 / cloudSize, center = False)
+    # Convert back to numpy for cpd
+    sourceArray = np.asarray(sourceCloud.points,dtype=np.float32)
+    targetArray = np.asarray(targetCloud.points,dtype=np.float32)
+    registrationOutput = self.cpd_registration(targetArray, sourceArray, parameters["CPDIterations"], parameters["CPDTolerence"], parameters["alpha"], parameters["beta"])
+    deformed_array, _ = registrationOutput.register()
+    outputCloud = geometry.PointCloud()
+    outputCloud.points = utility.Vector3dVector(deformed_array)
+    outputCloud.scale(cloudSize/25, center = False)
+    return np.asarray(outputCloud.points)
+    
+  def cpd_registration(self, targetArray, sourceArray, CPDIterations, CPDTolerence, alpha_parameter, beta_parameter):
+    from pycpd import DeformableRegistration
+    output = DeformableRegistration(**{'X': targetArray, 'Y': sourceArray,'max_iterations': CPDIterations, 'tolerance': CPDTolerence}, alpha = alpha_parameter, beta  = beta_parameter)
+    return output
+    
+  def denseCorrespondenceBaseMesh(self, originalLandmarks, originalMeshes, baseMesh, baseLandmarks, writeOption=False):
+    meanShape, alignedPoints = self.procrustesImposition(originalLandmarks, False)
+    sampleNumber = alignedPoints.GetNumberOfBlocks()
+    denseCorrespondenceGroup = vtk.vtkMultiBlockDataGroupFilter()
+    for i in range(sampleNumber):
+      correspondingMesh = self.denseSurfaceCorrespondencePair(originalMeshes.GetBlock(i), 
+      originalLandmarks.GetBlock(i).GetPoints(), alignedPoints.GetBlock(i).GetPoints(), 
+      baseMesh, baseLandmarks, meanShape, str(i), writeOption)
+      denseCorrespondenceGroup.AddInputData(correspondingMesh)
+  
+    denseCorrespondenceGroup.Update()
+    return denseCorrespondenceGroup.GetOutput()
+  
+  def denseSurfaceCorrespondencePair(self, originalMesh, originalLandmarks, alignedLandmarks, baseMesh, baseLandmarks, meanShape, iteration="0", writeOption=False):
+    # TPS warp target and base mesh to meanshape
+    meanTransform = vtk.vtkThinPlateSplineTransform()
+    meanTransform.SetSourceLandmarks( originalLandmarks )
+    meanTransform.SetTargetLandmarks( meanShape )
+    meanTransform.SetBasisToR() # for 3D transform
+  
+    meanTransformFilter = vtk.vtkTransformPolyDataFilter()
+    meanTransformFilter.SetInputData(originalMesh)
+    meanTransformFilter.SetTransform(meanTransform)
+    meanTransformFilter.Update()
+    meanWarpedMesh = meanTransformFilter.GetOutput()
+  
+    meanTransformBase = vtk.vtkThinPlateSplineTransform()
+    meanTransformBase.SetSourceLandmarks( baseLandmarks )
+    meanTransformBase.SetTargetLandmarks( meanShape )
+    meanTransformBase.SetBasisToR() # for 3D transform
+  
+    meanTransformBaseFilter = vtk.vtkTransformPolyDataFilter()
+    meanTransformBaseFilter.SetInputData(baseMesh)
+    meanTransformBaseFilter.SetTransform(meanTransformBase)
+    meanTransformBaseFilter.Update()    
+    meanWarpedBase = meanTransformBaseFilter.GetOutput()
+    
+    # write ouput
+    if writeOption:
+      plyWriterSubject = vtk.vtkPLYWriter()
+      plyName = iteration + ".ply"
+      plyPath = os.path.join(self.outputDirectory, plyName) 
+      plyWriterSubject.SetFileName(plyPath)
+      plyWriterSubject.SetInputData(meanWarpedMesh)
+      plyWriterSubject.Write()
+    
+      plyWriterBase = vtk.vtkPLYWriter()
+      plyName = "base.ply"
+      plyPath = os.path.join(self.outputDirectory, plyName) 
+      plyWriterBase.SetFileName(plyPath)
+      plyWriterBase.SetInputData(meanWarpedBase)
+      plyWriterBase.Write()
+    
+    # Dense correspondence 
+    cellLocator = vtk.vtkCellLocator()
+    cellLocator.SetDataSet(meanWarpedMesh)
+    cellLocator.BuildLocator()
+  
+    point = [0,0,0]
+    correspondingPoint = [0,0,0]
+    correspondingPoints = vtk.vtkPoints()
+    cellId = vtk.reference(0)
+    subId = vtk.reference(0)
+    distance = vtk.reference(0.0)
+    for i in range(meanWarpedBase.GetNumberOfPoints()):
+      meanWarpedBase.GetPoint(i,point)
+      cellLocator.FindClosestPoint(point,correspondingPoint,cellId, subId, distance)
+      correspondingPoints.InsertPoint(i,correspondingPoint)
+  
+    #Copy points into mesh with base connectivity  
+    correspondingMesh = vtk.vtkPolyData()
+    correspondingMesh.SetPoints(correspondingPoints)
+    correspondingMesh.SetPolys(meanWarpedBase.GetPolys())
+  
+    # Apply inverse warping
+    inverseTransform = vtk.vtkThinPlateSplineTransform()
+    inverseTransform.SetSourceLandmarks( meanShape )
+    inverseTransform.SetTargetLandmarks( originalLandmarks )
+    inverseTransform.SetBasisToR() # for 3D transform
+  
+    inverseTransformFilter = vtk.vtkTransformPolyDataFilter()
+    inverseTransformFilter.SetInputData(correspondingMesh)
+    inverseTransformFilter.SetTransform(inverseTransform)
+    inverseTransformFilter.Update()
+  
+    return inverseTransformFilter.GetOutput()
 
-    plotSeriesNode1.SetAndObserveTableNodeID(tableNode.GetID())
-    plotSeriesNode1.SetXColumnName(xAxis)
-    plotSeriesNode1.SetYColumnName(yAxis)
-    plotSeriesNode1.SetLabelColumnName('Subject ID')
-    plotSeriesNode1.SetPlotType(slicer.vtkMRMLPlotSeriesNode.PlotTypeScatter)
-    plotSeriesNode1.SetLineStyle(slicer.vtkMRMLPlotSeriesNode.LineStyleNone)
-    plotSeriesNode1.SetMarkerStyle(slicer.vtkMRMLPlotSeriesNode.MarkerStyleSquare)
-    plotSeriesNode1.SetUniqueColor()
+  def convertPointsToVTK(self, points): 
+    array_vtk = vtk_np.numpy_to_vtk(points, deep=True, array_type=vtk.VTK_FLOAT)
+    points_vtk = vtk.vtkPoints()
+    points_vtk.SetData(array_vtk)
+    polydata_vtk = vtk.vtkPolyData()
+    polydata_vtk.SetPoints(points_vtk)
+    return polydata_vtk
 
-    plotChartNode=slicer.mrmlScene.GetFirstNodeByName("Chart_PCA" + xAxis + "v" +yAxis)
-    if plotChartNode is None:
-      plotChartNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLPlotChartNode", "Chart_" + xAxis + "v" +yAxis)
-      GPANodeCollection.AddItem(plotChartNode)
-
-    plotChartNode.AddAndObservePlotSeriesNodeID(plotSeriesNode1.GetID())
-    plotChartNode.SetTitle('PCA Scatter Plot ')
-    plotChartNode.SetXAxisTitle(xAxis)
-    plotChartNode.SetYAxisTitle(yAxis)
-
-    layoutManager = slicer.app.layoutManager()
-
-    plotWidget = layoutManager.plotWidget(0)
-    plotViewNode = plotWidget.mrmlPlotViewNode()
-    plotViewNode.SetPlotChartNodeID(plotChartNode.GetID())
-
-  def lollipopGraph(self, LMObj,LM, pc, scaleFactor, componentNumber, TwoDOption):
-    # set options for 3 vector displays
-    if componentNumber == 1:
-      color = [1,0,0]
-      modelNodeName = 'Lollipop Vector Plot 1'
-    elif componentNumber == 2:
-      color = [0,1,0]
-      modelNodeName = 'Lollipop Vector Plot 2'
-    else:
-      color = [0,0,1]
-      modelNodeName = 'Lollipop Vector Plot 3'
-
-    if pc is not 0:
-      pc=pc-1 # get current component
-      endpoints=self.calcEndpoints(LMObj,LM,pc,scaleFactor)
-      i,j=LM.shape
-
-      # declare arrays for polydata
-      points = vtk.vtkPoints()
-      points.SetNumberOfPoints(i*2)
-      lines = vtk.vtkCellArray()
-      magnitude = vtk.vtkFloatArray()
-      magnitude.SetName('Magnitude');
-      magnitude.SetNumberOfComponents(1);
-      magnitude.SetNumberOfValues(i);
-
-      for x in range(i): #populate vtkPoints and vtkLines
-        points.SetPoint(x,LM[x,:])
-        points.SetPoint(x+i,endpoints[x,:])
-        line = vtk.vtkLine()
-        line.GetPointIds().SetId(0,x)
-        line.GetPointIds().SetId(1,x+i)
-        lines.InsertNextCell(line)
-        magnitude.InsertValue(x,abs(LM[x,0]-endpoints[x,0]) + abs(LM[x,1]-endpoints[x,1]) + abs(LM[x,2]-endpoints[x,2]))
-
-      polydata=vtk.vtkPolyData()
-      polydata.SetPoints(points)
-      polydata.SetLines(lines)
-      polydata.GetCellData().AddArray(magnitude)
-
-      tubeFilter = vtk.vtkTubeFilter()
-      tubeFilter.SetInputData(polydata)
-      tubeFilter.SetRadius(scaleFactor/500)
-      tubeFilter.SetNumberOfSides(20)
-      tubeFilter.CappingOn()
-      tubeFilter.Update()
-
-      #check if there is a model node for lollipop plot
-      modelNode=slicer.mrmlScene.GetFirstNodeByName(modelNodeName)
-      if modelNode is None:
-        modelNode = slicer.vtkMRMLModelNode()
-        modelNode.SetName(modelNodeName)
-        slicer.mrmlScene.AddNode(modelNode)
-        GPANodeCollection.AddItem(modelNode)
-        modelDisplayNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLModelDisplayNode')
-        viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1") #name = "View"+ singletonTag
-        modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])
-        GPANodeCollection.AddItem(modelDisplayNode)
-        modelNode.SetAndObserveDisplayNodeID(modelDisplayNode.GetID())
-
-      modelDisplayNode = modelNode.GetDisplayNode()
-
-      modelDisplayNode.SetColor(color)
-      modelDisplayNode.SetVisibility2D(False)
-      modelNode.SetDisplayVisibility(1)
-      modelNode.SetAndObservePolyData(tubeFilter.GetOutput())
-      if TwoDOption:
-        modelDisplayNode.SetSliceDisplayModeToProjection()
-        modelDisplayNode.SetVisibility2D(True)
-        # Assign node to 2D views
-        layoutManager = slicer.app.layoutManager()
-        redNode = layoutManager.sliceWidget('Red').sliceView().mrmlSliceNode()
-        viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1")
-        modelDisplayNode.SetViewNodeIDs([viewNode1.GetID(),redNode.GetID()])
-      else:
-        viewNode1 = slicer.mrmlScene.GetFirstNodeByName("View1")
-        modelDisplayNode.SetViewNodeIDs([viewNode1.GetID()])  
-    else:
-      modelNode=slicer.mrmlScene.GetFirstNodeByName(modelNodeName)
-      if modelNode is not None:
-        modelNode.SetDisplayVisibility(0)
-
-  def calcEndpoints(self,LMObj,LM,pc, scaleFactor):
-    i,j=LM.shape
-    tmp=np.zeros((i,j))
-    tmp[:,0]=LMObj.vec[0:i,pc]
-    tmp[:,1]=LMObj.vec[i:2*i,pc]
-    tmp[:,2]=LMObj.vec[2*i:3*i,pc]
-    return LM+tmp*scaleFactor/3.0
-
-  def convertFudicialToVTKPoint(self, fnode):
-    import numpy as np
-    numberOfLM=fnode.GetNumberOfFiducials()
-    x=y=z=0
-    loc=[x,y,z]
-    lmData=np.zeros((numberOfLM,3))
-    for i in range(numberOfLM):
-      fnode.GetNthFiducialPosition(i,loc)
-      lmData[i,:]=np.asarray(loc)
-    points=vtk.vtkPoints()
-    for i in range(numberOfLM):
-      points.InsertNextPoint(lmData[i,0], lmData[i,1], lmData[i,2])
-    return points
-
-  def convertFudicialToNP(self, fnode):
-    import numpy as np
-    numberOfLM=fnode.GetNumberOfFiducials()
-    x=y=z=0
-    loc=[x,y,z]
-    lmData=np.zeros((numberOfLM,3))
-
-    for i in range(numberOfLM):
-      fnode.GetNthFiducialPosition(i,loc)
-      lmData[i,:]=np.asarray(loc)
-    return lmData
-
-  def convertNumpyToVTK(self, A):
-    x,y=A.shape
-    points=vtk.vtkPoints()
-    for i in range(x):
-      points.InsertNextPoint(A[i,0], A[i,1], A[i,2])
-    return points
-
-  def convertNumpyToVTKmatrix44(self, A):
-    x,y=A.shape
-    mat=vtk.vtkMatrix4x4()
-    for i in range(x):
-      for j in range(y):
-        mat.SetElement(i,j,A[i,j])
-    return mat
-
-  def convertVTK44toNumpy(self, A):
-    a=np.ones((4,4))
-    for i in range(4):
-      for j in range(4):
-        a[i,j]=A.GetElement(i,j)
-    return a
+  def computeAverageModelFromGroup(self, denseCorrespondenceGroup, baseIndex):
+    sampleNumber = denseCorrespondenceGroup.GetNumberOfBlocks()
+    pointNumber = denseCorrespondenceGroup.GetBlock(0).GetNumberOfPoints()
+    groupArray_np = np.empty((pointNumber,3,sampleNumber))
+    
+    # get base mesh as closest to the meanshape
+    baseMesh = denseCorrespondenceGroup.GetBlock(baseIndex)
+ 
+     # get points as array
+    for i in range(sampleNumber):
+      alignedMesh = denseCorrespondenceGroup.GetBlock(i)
+      alignedMesh_np = vtk_np.vtk_to_numpy(alignedMesh.GetPoints().GetData())
+      groupArray_np[:,:,i] = alignedMesh_np
+  
+    #Calculate mean point positions of aligned group
+    averagePoints_np = np.mean(groupArray_np, axis=2)
+    averagePointsPolydata = self.convertPointsToVTK(averagePoints_np)
+  
+    #Copy points into mesh with base connectivity  
+    averageModel = vtk.vtkPolyData()
+    averageModel.SetPoints(averagePointsPolydata.GetPoints())
+    averageModel.SetPolys(baseMesh.GetPolys())  
+    return averageModel
+  
+  def addMagnitudeFeature(self, denseCorrespondenceGroup, model):
+    sampleNumber = denseCorrespondenceGroup.GetNumberOfBlocks()
+    pointNumber = denseCorrespondenceGroup.GetBlock(0).GetNumberOfPoints()
+    statsArray = np.zeros((pointNumber, sampleNumber))
+    magnitudeMean = vtk.vtkDoubleArray()
+    magnitudeMean.SetNumberOfComponents(1)
+    magnitudeMean.SetName("Magnitude Mean")
+    magnitudeSD = vtk.vtkDoubleArray() 
+    magnitudeSD.SetNumberOfComponents(1)
+    magnitudeSD.SetName("Magnitude SD")
+    
+     # get distance arrays
+    for i in range(sampleNumber):
+      alignedMesh = denseCorrespondenceGroup.GetBlock(i)
+      magnitudes = vtk.vtkDoubleArray()
+      magnitudes.SetNumberOfComponents(1)
+      magnitudes.SetName("Subject_"+str(i))
+      for j in range(pointNumber):
+        modelPoint = model.GetPoint(j)
+        targetPoint = alignedMesh.GetPoint(j)
+        distance = np.sqrt(vtk.vtkMath.Distance2BetweenPoints(modelPoint,targetPoint))
+        magnitudes.InsertNextValue(distance)
+        statsArray[j,i]=distance
+      
+      model.GetPointData().AddArray(magnitudes)
+    
+    for i in range(pointNumber):
+      pointMean = statsArray[i,:].mean()
+      magnitudeMean.InsertNextValue(pointMean)
+      pointSD = statsArray[i,:].std()
+      magnitudeSD.InsertNextValue(pointSD)
+    
+    model.GetPointData().AddArray(magnitudeMean)  
+    model.GetPointData().AddArray(magnitudeSD) 
+      
+  def addMagnitudeFeatureSymmetry(self, denseCorrespondenceGroup, denseCorrespondenceGroupMirror, model):
+    sampleNumber = denseCorrespondenceGroup.GetNumberOfBlocks()
+    pointNumber = denseCorrespondenceGroup.GetBlock(0).GetNumberOfPoints()
+    statsArray = np.zeros((pointNumber, sampleNumber))
+    magnitudeMean = vtk.vtkDoubleArray()
+    magnitudeMean.SetNumberOfComponents(1)
+    magnitudeMean.SetName("Magnitude Mean")
+    magnitudeSD = vtk.vtkDoubleArray() 
+    magnitudeSD.SetNumberOfComponents(1)
+    magnitudeSD.SetName("Magnitude SD")
+    
+     # get distance arrays
+    for i in range(sampleNumber):
+      alignedMesh = denseCorrespondenceGroup.GetBlock(i)
+      mirrorMesh = denseCorrespondenceGroupMirror.GetBlock(i)
+      magnitudes = vtk.vtkDoubleArray()
+      magnitudes.SetNumberOfComponents(1)
+      magnitudes.SetName("Subject_"+str(i))
+      for j in range(pointNumber):
+        modelPoint = model.GetPoint(j)
+        targetPoint1 = alignedMesh.GetPoint(j)
+        targetPoint2 = mirrorMesh.GetPoint(j)
+        distance = np.sqrt(vtk.vtkMath.Distance2BetweenPoints(targetPoint1,targetPoint2))
+        magnitudes.InsertNextValue(distance)
+        statsArray[j,i]=distance
+      
+      model.GetPointData().AddArray(magnitudes)
+    
+    for i in range(pointNumber):
+      pointMean = statsArray[i,:].mean()
+      magnitudeMean.InsertNextValue(pointMean)
+      pointSD = statsArray[i,:].std()
+      magnitudeSD.InsertNextValue(pointSD)
+    
+    model.GetPointData().AddArray(magnitudeMean)  
+    model.GetPointData().AddArray(magnitudeSD)
 
 
-class GPATest(ScriptedLoadableModuleTest):
-  """
-  This is the test case for your scripted module.
-  Uses ScriptedLoadableModuleTest base class, available at:
-  https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
-  """
 
-  def setUp(self):
-    """ Do whatever is needed to reset the state - typically a scene clear will be enough.
-    """
-    slicer.mrmlScene.Clear(0)
-
-  def runTest(self):
-    """Run as few or as many tests as needed here.
-    """
-    self.setUp()
-    self.test_GPA1()
-
-  def test_GPA1(self):
-    """ Ideally you should have several levels of tests.  At the lowest level
-    tests should exercise the functionality of the logic with different inputs
-    (both valid and invalid).  At higher levels your tests should emulate the
-    way the user would interact with your code and confirm that it still works
-    the way you intended.
-    One of the most important features of the tests is that it should alert other
-    developers when their changes will have an impact on the behavior of your
-    module.  For example, if a developer removes a feature that you depend on,
-    your test should break so they know that the feature is needed.
-    """
-    self.delayDisplay("Starting the test")
-    #
-    # first, get some data
-    #
-    import SampleData
-    SampleData.downloadFromURL(
-      nodeNames='FA',
-      fileNames='FA.nrrd',
-      uris='http://slicer.kitware.com/midas3/download?items=5767',
-      checksums='SHA256:12d17fba4f2e1f1a843f0757366f28c3f3e1a8bb38836f0de2a32bb1cd476560')
-    self.delayDisplay('Finished with download and loading')
-
-    volumeNode = slicer.util.getNode(pattern="FA")
-    logic = GPALogic()
-    self.assertIsNotNone( logic.hasImageData(volumeNode) )
-    self.delayDisplay('Test passed!')
