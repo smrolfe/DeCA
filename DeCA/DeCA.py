@@ -253,7 +253,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.WriteErrorCheckBox = qt.QCheckBox()
     self.WriteErrorCheckBox.checked = False
     self.WriteErrorCheckBox.setToolTip("If checked, DeCA will create a directory of results for use in estimating point correspondence error.")
-    #DeCAWidgetLayout.addRow("Create output for error checking: ", self.WriteErrorCheckBox)
+    DeCAWidgetLayout.addRow("Create output for error checking: ", self.WriteErrorCheckBox)
     
     #
     # Select Analysis Type
