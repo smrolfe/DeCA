@@ -59,6 +59,8 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     generateMeanTabLayout = qt.QFormLayout(generateMeanTab)
     DeCATab = qt.QWidget()
     DeCATabLayout = qt.QFormLayout(DeCATab)
+    DeCALTab = qt.QWidget()
+    DeCALTabLayout = qt.QFormLayout(DeCALTab)
     visualizeTab = qt.QWidget()
     visualizeTabLayout = qt.QFormLayout(visualizeTab)
     symmetryTab = qt.QWidget()
@@ -68,6 +70,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     tabsWidget.addTab(generateMeanTab, "Generate Mean")
     tabsWidget.addTab(symmetryTab, "Mirror Data")
     tabsWidget.addTab(DeCATab, "DeCA")
+    tabsWidget.addTab(DeCALTab, "DeCAL")
     tabsWidget.addTab(visualizeTab, "Visualize Results")
     
     self.layout.addWidget(tabsWidget)
@@ -261,7 +264,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.WriteCorrPointsCheckBox= qt.QCheckBox()
     self.WriteCorrPointsCheckBox.checked = False
     self.WriteCorrPointsCheckBox.setToolTip("If checked, DeCA will write out corresponding meshes.")
-    DeCAWidgetLayout.addRow("Write out point correspondences: ", self.WriteCorrPointsCheckBox)
+    #DeCAWidgetLayout.addRow("Write out point correspondences: ", self.WriteCorrPointsCheckBox)
     
     #
     # Select Analysis Type
@@ -422,6 +425,101 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.mirrorLMDirectory.connect('validInputChanged(bool)', self.onMirrorSelect)
     self.mirrorButton.connect('clicked(bool)', self.onMirrorButton)
     
+    ################################### DeCAL Tab ###################################
+    # Layout within the DeCA tab
+    DeCALWidget=ctk.ctkCollapsibleButton()
+    DeCALWidgetLayout = qt.QFormLayout(DeCALWidget)
+    DeCALWidget.text = "Dense Correspondence Landmarking"
+    DeCALTabLayout.addRow(DeCALWidget)
+    
+    #
+    # Select base mesh
+    #
+    self.DCLBaseModelSelector = ctk.ctkPathLineEdit()
+    self.DCLBaseModelSelector.filters  = ctk.ctkPathLineEdit().Files
+    self.DCLBaseModelSelector.nameFilters=["Model (*.ply *.stl *.obj *.vtk *.vtp)"]
+    DeCALWidgetLayout.addRow("Base mesh: ", self.DCLBaseModelSelector)
+    
+    #
+    # Select base landmarks
+    #
+    self.DCLBaseLMSelector = ctk.ctkPathLineEdit()
+    self.DCLBaseLMSelector.filters  = ctk.ctkPathLineEdit().Files
+    self.DCLBaseLMSelector.nameFilters=["*.fcsv"]
+    DeCALWidgetLayout.addRow("Base landmarks: ", self.DCLBaseLMSelector)
+    
+    #
+    # Select rigidly aligned meshes directory
+    #  
+    self.DCLMeshDirectory=ctk.ctkPathLineEdit()
+    self.DCLMeshDirectory.filters = ctk.ctkPathLineEdit.Dirs
+    self.DCLMeshDirectory.setToolTip( "Select directory containing rigidly aligned meshes" )
+    DeCALWidgetLayout.addRow("Rigidly Aligned Mesh directory: ", self.DCLMeshDirectory)
+    
+    #
+    # Select rigidly aligned landmark directory
+    #  
+    self.DCLLandmarkDirectory=ctk.ctkPathLineEdit()
+    self.DCLLandmarkDirectory.filters = ctk.ctkPathLineEdit.Dirs
+    self.DCLLandmarkDirectory.setToolTip( "Select directory containing rigidly aligned landmarks" )
+    DeCALWidgetLayout.addRow("Rigidly Aligned Landmark directory: ", self.DCLLandmarkDirectory)
+    
+    #
+    # Select DeCA output directory
+    #  
+    self.DCLOutputDirectory=ctk.ctkPathLineEdit()
+    self.DCLOutputDirectory.filters = ctk.ctkPathLineEdit.Dirs
+    self.DCLOutputDirectory.setToolTip( "Select directory for DeCA output" )
+    DeCALWidgetLayout.addRow("DeCA output directory: ", self.DCLOutputDirectory)
+    
+    #
+    # Set spacing tolerance
+    #
+    self.spacingTolerance = ctk.ctkSliderWidget()
+    self.spacingTolerance.singleStep = .1
+    self.spacingTolerance.minimum = 0
+    self.spacingTolerance.maximum = 10
+    self.spacingTolerance.value = 4
+    self.spacingTolerance.setToolTip("Set tolerance of spacing as a percentage of the image diagonal")
+    DeCALWidgetLayout.addRow("Spacing tolerance: ", self.spacingTolerance)
+    
+    #
+    # Get Subsample Rate Button
+    #
+    self.getPointNumberButton = qt.QPushButton("Get subsample number")
+    self.getPointNumberButton.toolTip = "Output the number of points sampled on the template shape."
+    self.getPointNumberButton.enabled = False
+    DeCALWidgetLayout.addRow(self.getPointNumberButton)
+    
+    #
+    # Subsample Information
+    #
+    self.subsampleInfo = qt.QPlainTextEdit()
+    self.subsampleInfo.setPlaceholderText("Subsampling information")
+    self.subsampleInfo.setReadOnly(True)
+    DeCALWidgetLayout.addRow(self.subsampleInfo)
+    
+    #
+    # Apply Button
+    #
+    self.DCLApplyButton = qt.QPushButton("Run DeCAL")
+    self.DCLApplyButton.toolTip = "Generate a set of corresponding landmarks"
+    self.DCLApplyButton.enabled = False
+    DeCALWidgetLayout.addRow(self.DCLApplyButton)
+    
+    # connections
+    self.DCLBaseModelSelector.connect('validInputChanged(bool)', self.testConnect)
+    self.DCLBaseLMSelector.connect('validInputChanged(bool)', self.onDCLSelect) 
+    self.DCLMeshDirectory.connect('validInputChanged(bool)', self.onDCLSelect)
+    self.DCLLandmarkDirectory.connect('validInputChanged(bool)', self.onDCLSelect)
+    self.DCLOutputDirectory.connect('validInputChanged(bool)', self.onDCLSelect)
+    self.DCLApplyButton.connect('clicked(bool)', self.onDCLApplyButton)
+    self.getPointNumberButton.connect('clicked(bool)', self.onGetPointNumberButton)
+
+### GUI SUpport Functions    
+  def testConnect(self):
+    print("Got it!!")  
+    
   def onToggleAnalysis(self):
     if self.analysisTypeSymmetry.checked == True:
       self.mirrorMeshSelector.enabled = True
@@ -494,7 +592,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     logic = DeCALogic()
     if self.analysisTypeShape.checked == True:
       logic.runDCAlign(self.DCBaseModelSelector.currentPath, self.DCBaseLMSelector.currentPath, self.DCMeshDirectory.currentPath, 
-      self.DCLandmarkDirectory.currentPath, self.DCOutputDirectory.currentPath, self.CPDCheckBox.checked, self.WriteErrorCheckBox.checked, self.WriteCorrPointsCheckBox.checked)
+      self.DCLandmarkDirectory.currentPath, self.DCOutputDirectory.currentPath, self.CPDCheckBox.checked, self.WriteErrorCheckBox.checked)
     else: 
       logic.runDCAlignSymmetric(self.DCBaseModelSelector.currentPath, self.DCBaseLMSelector.currentPath, self.DCMeshDirectory.currentPath, 
       self.DCLandmarkDirectory.currentPath, self.mirrorMeshSelector.currentPath, self.mirrorLMSelector.currentPath, self.DCOutputDirectory.currentPath, 
@@ -509,6 +607,25 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
       and self.DCOutputDirectory.currentPath and self.DCBaseModelSelector.currentPath and self.DCBaseLMSelector.currentPath
       and self.mirrorMeshSelector.currentPath and self.mirrorLMSelector.currentPath)   
   
+  def onDCLSelect(self):
+    self.getPointNumberButton.enabled = bool (self.DCLMeshDirectory.currentPath and self.DCLLandmarkDirectory.currentPath 
+    and self.DCLOutputDirectory.currentPath and self.DCLBaseModelSelector.currentPath and self.DCLBaseLMSelector.currentPath) 
+    print(bool (self.DCLMeshDirectory.currentPath ))
+    print(bool (self.DCLLandmarkDirectory.currentPath) )
+    print(bool (self.DCLOutputDirectory.currentPath ) )
+    print(bool ( self.DCLBaseLMSelector.currentPath) )
+  
+  def onGetPointNumberButton(self):
+    logic = DeCALogic()
+    self.baseNode, self.templateModel, pointNumber = logic.runCheckPoints(self.DCLBaseModelSelector.currentPath, self.spacingTolerance.value)
+    self.subsampleInfo.insertPlainText(f'The subsampled template has a total of {pointNumber} points. \n')  
+    self.DCLApplyButton.enabled = True
+    
+  def onDCLApplyButton(self):
+    logic = DeCALogic()
+    logic.runDeCAL(self.baseNode, self.templateModel, self.DCLBaseLMSelector.currentPath, self.DCLMeshDirectory.currentPath, 
+    self.DCLLandmarkDirectory.currentPath, self.DCLOutputDirectory.currentPath, self.spacingTolerance.value)
+     
   def onMirrorButton(self):
     logic = DeCALogic()
     axis = [1,1,1]
@@ -535,6 +652,70 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     Uses ScriptedLoadableModuleLogic base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
+  def runCheckPoints(self, baseMeshPath, spacingTolerance):
+    baseNode = slicer.util.loadModel(baseMeshPath)
+    indexArrayName = "indexArray"
+    self.addIndexArray(baseNode, indexArrayName)
+    spacingPercentage = spacingTolerance/100
+    templateModel = self.downsampleModel(baseNode, spacingPercentage)
+    templatePointNumber = templateModel.GetNumberOfPoints()
+    #slicer.mrmlScene.RemoveNode(baseNode)
+    return baseNode, templateModel, templatePointNumber
+    
+  def runDeCAL(self, baseNode, templateModel, baseLMPath, meshDirectory, landmarkDirectory, outputDirectory, spacingPercentage):
+    baseLandmarks=self.fiducialNodeToPolyData(baseLMPath).GetPoints()
+    modelExt=['ply','stl','vtp']
+    self.modelNames, models = self.importMeshes(meshDirectory, modelExt)
+    landmarks = self.importLandmarks(landmarkDirectory)
+    self.outputDirectory = outputDirectory
+    denseCorrespondenceGroup = self.denseCorrespondenceBaseMesh(landmarks, models, baseNode.GetPolyData(), baseLandmarks)
+    
+    # get base mesh index
+    indexArrayName = "indexArray"
+    templateIndex = templateModel.GetPointData().GetArray(indexArrayName)
+    
+    # saving point correspondences
+    if(templateIndex):
+      sampleNumber = denseCorrespondenceGroup.GetNumberOfBlocks()
+      for i in range(sampleNumber):
+        alignedMesh = denseCorrespondenceGroup.GetBlock(i)
+        alignedPointNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"alignedPoints")
+        for j in range(templateIndex.GetNumberOfValues()):
+          baseIndex = templateIndex.GetValue(j)  
+          alignedPoint = alignedMesh.GetPoint(baseIndex)
+          alignedPointNode.AddFiducialFromArray(alignedPoint)  
+        outputLMPath = os.path.join(outputDirectory, self.modelNames[i]+".json")
+        slicer.util.saveNode(alignedPointNode, outputLMPath)
+        slicer.mrmlScene.RemoveNode(alignedPointNode)
+        
+      # save base node correspondences 
+      basePointNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"basePoints")
+      for j in range(templateIndex.GetNumberOfValues()):
+        baseIndex = templateIndex.GetValue(j) 
+        basePoint = alignedMesh.GetPoint(baseIndex)
+        basePointNode.AddFiducialFromArray(basePoint)
+      baseLMPath = os.path.join(outputDirectory, "baseModel.json")
+      slicer.util.saveNode(basePointNode, baseLMPath)
+      slicer.mrmlScene.RemoveNode(basePointNode)
+  
+  def downsampleModel(self, model, spacingPercentage):
+    points=model.GetPolyData()
+    cleanFilter=vtk.vtkCleanPolyData()
+    cleanFilter.SetToleranceIsAbsolute(False)
+    cleanFilter.SetTolerance(spacingPercentage)
+    cleanFilter.SetInputData(points)
+    cleanFilter.Update()
+    return cleanFilter.GetOutput()
+        
+  def addIndexArray(self, mesh, arrayName):  
+    # Array of original index values
+    indexArray = vtk.vtkIntArray()
+    indexArray.SetNumberOfComponents(1)
+    indexArray.SetName(arrayName)
+    for i in range(mesh.GetPolyData().GetNumberOfPoints()):   
+      indexArray.InsertNextValue(i)
+    mesh.GetPolyData().GetPointData().AddArray(indexArray)
+    
   def runMirroring(self, meshDirectory, lmDirectory, mirrorMeshDirectory, mirrorLMDirectory, mirrorAxis, mirrorIndexText):
     mirrorMatrix = vtk.vtkMatrix4x4()
     mirrorMatrix.SetElement(0, 0, mirrorAxis[0])
@@ -617,7 +798,7 @@ class DeCALogic(ScriptedLoadableModuleLogic):
             slicer.mrmlScene.RemoveNode(rigidTransformNode)
             slicer.mrmlScene.RemoveNode(mirrorLMNode)
     
-  def runDCAlign(self, baseMeshPath, baseLMPath, meshDirectory, landmarkDirectory, outputDirectory, optionCPD, optionErrorOutput, optionPointOutput):
+  def runDCAlign(self, baseMeshPath, baseLMPath, meshDirectory, landmarkDirectory, outputDirectory, optionCPD, optionErrorOutput):
     if optionErrorOutput:
       self.errorCheckPath = os.path.join(outputDirectory, "errorChecking")
       if not os.path.exists(self.errorCheckPath):
@@ -641,17 +822,6 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     outputModelName = 'decaResultModel.vtp'
     outputModelPath = os.path.join(outputDirectory, outputModelName) 
     slicer.util.saveNode(baseNode, outputModelPath)
-    
-    # if saving point correspondances
-    #if(optionPointOutput):
-    #  sampleNumber = denseCorrespondenceGroup.GetNumberOfBlocks()
-    #  for i in range(sampleNumber):
-    #    alignedMesh = denseCorrespondenceGroup.GetBlock(i)
-    #    outputMeshPath = os.path.join(outputDirectory, self.modelNames[i]+".vtp")
-    #    writer =  vtk.vtkXMLPolyDataWriter()
-    #   writer.SetFileName(outputMeshPath)
-    #    writer.SetInputData(alignedMesh)
-    #    writer.Write()
     
   def runDCAlignSymmetric(self, baseMeshPath, baseLMPath, meshDir, landmarkDir, mirrorMeshDir, mirrorLandmarkDir, outputDir, optionCPD, optionErrorOutput, optionPointOutput):
     if optionErrorOutput:
