@@ -825,7 +825,7 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     
   def runDCAlignSymmetric(self, baseMeshPath, baseLMPath, meshDir, landmarkDir, mirrorMeshDir, mirrorLandmarkDir, outputDir, optionCPD, optionErrorOutput, optionPointOutput):
     if optionErrorOutput:
-      self.errorCheckPath = os.path.join(outputDirectory, "errorChecking")
+      self.errorCheckPath = os.path.join(outputDir, "errorChecking")
       if not os.path.exists(self.errorCheckPath):
         os.mkdir(self.errorCheckPath)
     baseNode = slicer.util.loadModel(baseMeshPath)
