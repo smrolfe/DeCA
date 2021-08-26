@@ -839,11 +839,11 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     mirrorLandmarks = self.importLandmarks(mirrorLandmarkDir)
     self.outputDirectory = outputDir
     if not(optionCPD):
-      denseCorrespondenceGroup = self.denseCorrespondenceBaseMesh(landmarks, models, baseMesh, baseLandmarks, optionErrorOutput)
+      denseCorrespondenceGroup = self.denseCorrespondenceBaseMesh(landmarks, models, baseMesh, baseLandmarks)
       denseCorrespondenceGroupMirror = self.denseCorrespondenceBaseMesh(mirrorLandmarks, mirrorModels, baseMesh, baseLandmarks)
       
     else: 
-      denseCorrespondenceGroup = self.denseCorrespondenceCPD(mirrorLandmarks, models, baseMesh, baseLandmarks, optionErrorOutput)
+      denseCorrespondenceGroup = self.denseCorrespondenceCPD(landmarks, models, baseMesh, baseLandmarks)
       denseCorrespondenceGroupMirror = self.denseCorrespondenceCPD(mirrorLandmarks, mirrorModels, baseMesh, baseLandmarks)
       
     self.addMagnitudeFeatureSymmetry(denseCorrespondenceGroup, denseCorrespondenceGroupMirror, self.modelNames, baseMesh)
