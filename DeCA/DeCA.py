@@ -689,10 +689,11 @@ class DeCALogic(ScriptedLoadableModuleLogic):
         slicer.mrmlScene.RemoveNode(alignedPointNode)
         
       # save base node correspondences 
+      baseMesh = baseNode.GetPolyData()
       basePointNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"basePoints")
       for j in range(templateIndex.GetNumberOfValues()):
         baseIndex = templateIndex.GetValue(j) 
-        basePoint = alignedMesh.GetPoint(baseIndex)
+        basePoint = baseMesh.GetPoint(baseIndex)
         basePointNode.AddFiducialFromArray(basePoint)
       baseLMPath = os.path.join(outputDirectory, "baseModel.json")
       slicer.util.saveNode(basePointNode, baseLMPath)
