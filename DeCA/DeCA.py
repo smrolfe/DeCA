@@ -689,11 +689,10 @@ class DeCALogic(ScriptedLoadableModuleLogic):
         slicer.mrmlScene.RemoveNode(alignedPointNode)
         
       # save base node correspondences 
-      baseMesh = baseNode.GetPolyData()
       basePointNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"basePoints")
       for j in range(templateIndex.GetNumberOfValues()):
         baseIndex = templateIndex.GetValue(j) 
-        basePoint = baseMesh.GetPoint(baseIndex)
+        basePoint = baseNode.GetPolyData().GetPoint(baseIndex)
         basePointNode.AddFiducialFromArray(basePoint)
       baseLMPath = os.path.join(outputDirectory, "baseModel.json")
       slicer.util.saveNode(basePointNode, baseLMPath)
@@ -739,6 +738,7 @@ class DeCALogic(ScriptedLoadableModuleLogic):
         meshName = os.path.splitext(meshFileName)[0]
         meshFilePath = os.path.join(meshDirectory, meshFileName)
         regex = re.compile(r'\d+')
+        print("meshfile name: ", meshFileName)
         subjectID = [int(x) for x in regex.findall(meshFileName)][-1]
         for lmFileName in lmFileList:
           if str(subjectID) in lmFileName:
@@ -842,18 +842,18 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     if not(optionCPD):
       denseCorrespondenceGroup = self.denseCorrespondenceBaseMesh(landmarks, models, baseMesh, baseLandmarks)
       denseCorrespondenceGroupMirror = self.denseCorrespondenceBaseMesh(mirrorLandmarks, mirrorModels, baseMesh, baseLandmarks)
-      
-    else: 
+
+    else:
       denseCorrespondenceGroup = self.denseCorrespondenceCPD(landmarks, models, baseMesh, baseLandmarks)
       denseCorrespondenceGroupMirror = self.denseCorrespondenceCPD(mirrorLandmarks, mirrorModels, baseMesh, baseLandmarks)
       
     self.addMagnitudeFeatureSymmetry(denseCorrespondenceGroup, denseCorrespondenceGroupMirror, self.modelNames, baseMesh)
-    
+
     # save results to output directory
     outputModelName = 'decaSymmetryResultModel.vtp'
     outputModelPath = os.path.join(outputDir, outputModelName) 
     slicer.util.saveNode(baseNode, outputModelPath)
-      
+
   def runMean(self, landmarkDirectory, meshDirectory, modelExt, outputDirectory):
     modelExt=['ply','stl','vtp']
     self.modelNames, models = self.importMeshes(meshDirectory, modelExt)
@@ -866,9 +866,10 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     averageModelNode.CreateDefaultDisplayNodes()
     averageModelNode.SetAndObservePolyData(averagePolyData)
      # compute mean landmarks
-    averageLandmarkNode = self.computeAverageLM(landmarks)     
+    averageLandmarkNode = self.computeAverageLM(landmarks)
     averageLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(False)
-    
+
+    # save results to output directory
     # save results to output directory
     outputModelName = 'decaMeanModel.ply'
     outputModelPath = os.path.join(outputDirectory, outputModelName) 
@@ -896,8 +897,10 @@ class DeCALogic(ScriptedLoadableModuleLogic):
         meshFilePath = os.path.join(meshDirectory, meshFileName)
         regex = re.compile(r'\d+')
         subjectID = [int(x) for x in regex.findall(meshFileName)][-1]
+        #subjectID = meshFileName.partition('.')[0]
         for lmFileName in lmFileList:
           if str(subjectID) in lmFileName:
+          #if subjectID == lmFileName:
             print(lmFileName + " found matching: " + meshFileName)
             # if mesh and lm file with same subject id exist, load into scene
             currentMeshNode = slicer.util.loadModel(meshFilePath)
