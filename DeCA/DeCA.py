@@ -95,7 +95,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     #
     self.baseLMSelector = ctk.ctkPathLineEdit()
     self.baseLMSelector.filters  = ctk.ctkPathLineEdit().Files
-    self.baseLMSelector.nameFilters=["*.fcsv"]
+    self.baseLMSelector.nameFilters=["Point set (*.fcsv *.json *.mrk.json)"]
     alignWidgetLayout.addRow("Base landmarks: ", self.baseLMSelector)
 
     #
@@ -214,7 +214,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     #
     self.DCBaseLMSelector = ctk.ctkPathLineEdit()
     self.DCBaseLMSelector.filters  = ctk.ctkPathLineEdit().Files
-    self.DCBaseLMSelector.nameFilters=["*.fcsv"]
+    self.DCBaseLMSelector.nameFilters=["Point set (*.fcsv *.json *.mrk.json"]
     DeCAWidgetLayout.addRow("Base landmarks: ", self.DCBaseLMSelector)
     
     #
@@ -445,7 +445,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     #
     self.DCLBaseLMSelector = ctk.ctkPathLineEdit()
     self.DCLBaseLMSelector.filters  = ctk.ctkPathLineEdit().Files
-    self.DCLBaseLMSelector.nameFilters=["*.fcsv"]
+    self.DCLBaseLMSelector.nameFilters=["Point set (*.fcsv *.json *.mrk.json"]
     DeCALWidgetLayout.addRow("Base landmarks: ", self.DCLBaseLMSelector)
     
     #
@@ -741,7 +741,7 @@ class DeCALogic(ScriptedLoadableModuleLogic):
         print("meshfile name: ", meshFileName)
         subjectID = [int(x) for x in regex.findall(meshFileName)][-1]
         for lmFileName in lmFileList:
-          if str(subjectID) in lmFileName:
+          if subjectID == int(regex.findall(lmFileName)[-1]):
             print(lmFileName + " found matching: " + meshFileName)
             # if mesh and lm file with same subject id exist, load into scene
             currentMeshNode = slicer.util.loadModel(meshFilePath)
@@ -788,7 +788,7 @@ class DeCALogic(ScriptedLoadableModuleLogic):
             outputMeshName = meshName + '_mirror.ply'
             outputMeshPath = os.path.join(mirrorMeshDirectory, outputMeshName) 
             slicer.util.saveNode(currentMeshNode, outputMeshPath)
-            outputLMName = meshName + '_mirror.fcsv'
+            outputLMName = meshName + '_mirror.mrk.json'
             outputLMPath = os.path.join(mirrorLMDirectory, outputLMName) 
             slicer.util.saveNode(mirrorLMNode, outputLMPath)
             
@@ -875,7 +875,7 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     outputModelPath = os.path.join(outputDirectory, outputModelName) 
     slicer.util.saveNode(averageModelNode, outputModelPath)
     
-    outputLMName = 'decaMeanModel.fcsv'
+    outputLMName = 'decaMeanModel.mrk.json'
     outputLMPath = os.path.join(outputDirectory, outputLMName) 
     slicer.util.saveNode(averageLandmarkNode, outputLMPath)
     
@@ -897,10 +897,8 @@ class DeCALogic(ScriptedLoadableModuleLogic):
         meshFilePath = os.path.join(meshDirectory, meshFileName)
         regex = re.compile(r'\d+')
         subjectID = [int(x) for x in regex.findall(meshFileName)][-1]
-        #subjectID = meshFileName.partition('.')[0]
         for lmFileName in lmFileList:
-          if str(subjectID) in lmFileName:
-          #if subjectID == lmFileName:
+          if subjectID == int(regex.findall(lmFileName)[-1]):
             print(lmFileName + " found matching: " + meshFileName)
             # if mesh and lm file with same subject id exist, load into scene
             currentMeshNode = slicer.util.loadModel(meshFilePath)
@@ -931,7 +929,7 @@ class DeCALogic(ScriptedLoadableModuleLogic):
             outputMeshName = meshFileName + '_align.ply'
             outputMeshPath = os.path.join(ouputMeshDirectory, outputMeshName) 
             slicer.util.saveNode(currentMeshNode, outputMeshPath)
-            outputLMName = meshFileName + '_align.fcsv'
+            outputLMName = meshFileName + '_align.mrk.json'
             outputLMPath = os.path.join(outputLMDirectory, outputLMName) 
             slicer.util.saveNode(currentLMNode, outputLMPath)
             
@@ -989,7 +987,7 @@ class DeCALogic(ScriptedLoadableModuleLogic):
   def importLandmarks(self, topDir):
     fiducialGroup = vtk.vtkMultiBlockDataGroupFilter()
     for file in sorted(os.listdir(topDir)):
-      if file.endswith(".fcsv"):
+      if file.endswith(".fcsv") or file.endswith(".json"):
         print("reading: ", file)
         inputFilePath = os.path.join(topDir, file)
         # may want to replace with vtk reader
@@ -1041,8 +1039,11 @@ class DeCALogic(ScriptedLoadableModuleLogic):
         
       procrustesDistances.append(distance)
     
-    min_index, min_value = min(enumerate(procrustesDistances), key=operator.itemgetter(1))
-    return min_index
+    try:
+      min_index, min_value = min(enumerate(procrustesDistances), key=operator.itemgetter(1))
+      return min_index
+    except:
+      return 0
     
   def denseCorrespondence(self, originalLandmarks, originalMeshes, writeErrorOption=False):
     meanShape, alignedPoints = self.procrustesImposition(originalLandmarks, False)
