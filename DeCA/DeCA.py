@@ -20,7 +20,7 @@ class DeCA(ScriptedLoadableModule):
   """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-  
+
   def __init__(self, parent):
     ScriptedLoadableModule.__init__(self, parent)
     self.parent.title = "DeCA" # TODO make this more human readable by adding spaces
@@ -32,7 +32,7 @@ class DeCA(ScriptedLoadableModule):
       """
     self.parent.helpText += self.getDefaultModuleDocumentationLink()
     self.parent.acknowledgementText = """
-      
+
       """ # replace with organization, grant and thanks.
 
 #
@@ -44,13 +44,13 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
   def onSelect(self):
-    self.applyButton.enabled = bool (self.meshDirectory.currentPath and self.landmarkDirectory.currentPath and 
-      self.baseMeshSelector.currentNode() and self.baseLMSelector.currentNode() and self.baseSLMSelect.currentNode() 
+    self.applyButton.enabled = bool (self.meshDirectory.currentPath and self.landmarkDirectory.currentPath and
+      self.baseMeshSelector.currentNode() and self.baseLMSelector.currentNode() and self.baseSLMSelect.currentNode()
       and self.outputDirectory.currentPath)
-          
+
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
-    
+
     # Set up tabs to split workflow
     tabsWidget = qt.QTabWidget()
     alignTab = qt.QWidget()
@@ -72,16 +72,16 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     tabsWidget.addTab(DeCATab, "DeCA")
     tabsWidget.addTab(DeCALTab, "DeCAL")
     tabsWidget.addTab(visualizeTab, "Visualize Results")
-    
+
     self.layout.addWidget(tabsWidget)
-    
+
     ################################### Align Tab ###################################
     # Layout within the tab
     alignWidget=ctk.ctkCollapsibleButton()
     alignWidgetLayout = qt.QFormLayout(alignWidget)
     alignWidget.text = "Align all samples to base sample"
     alignTabLayout.addRow(alignWidget)
-    
+
     #
     # Select base mesh
     #
@@ -89,7 +89,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.baseMeshSelector.filters  = ctk.ctkPathLineEdit().Files
     self.baseMeshSelector.nameFilters=["Model (*.ply *.stl *.obj *.vtk *.vtp)"]
     alignWidgetLayout.addRow("Base model: ", self.baseMeshSelector)
-    
+
     #
     # Select base landmarks
     #
@@ -100,12 +100,12 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
 
     #
     # Select meshes directory
-    #  
+    #
     self.meshDirectory=ctk.ctkPathLineEdit()
     self.meshDirectory.filters = ctk.ctkPathLineEdit.Dirs
     self.meshDirectory.setToolTip( "Select directory containing meshes" )
     alignWidgetLayout.addRow("Mesh directory: ", self.meshDirectory)
-    
+
     #
     # Select landmarks directory
     #
@@ -113,7 +113,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.landmarkDirectory.filters = ctk.ctkPathLineEdit.Dirs
     self.landmarkDirectory.setToolTip( "Select directory containing landmarks" )
     alignWidgetLayout.addRow("Landmark directory: ", self.landmarkDirectory)
-    
+
     #
     # Select aligned mesh directory
     #
@@ -121,7 +121,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.alignedMeshDirectory.filters = ctk.ctkPathLineEdit.Dirs
     self.alignedMeshDirectory.setToolTip( "Select directory for aligned meshes: " )
     alignWidgetLayout.addRow("Aligned mesh directory: ", self.alignedMeshDirectory)
-    
+
     #
     # Select aligned landmark directory
     #
@@ -137,23 +137,23 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.applyButton.toolTip = "Run alignment to base subject"
     self.applyButton.enabled = False
     alignWidgetLayout.addRow(self.applyButton)
-    
+
     # connections
     self.baseMeshSelector.connect('validInputChanged(bool)', self.onSelect)
     self.baseLMSelector.connect('validInputChanged(bool)', self.onSelect)
     self.meshDirectory.connect('validInputChanged(bool)', self.onSelect)
-    self.landmarkDirectory.connect('validInputChanged(bool)', self.onSelect) 
+    self.landmarkDirectory.connect('validInputChanged(bool)', self.onSelect)
     self.alignedMeshDirectory.connect('validInputChanged(bool)', self.onSelect)
     self.alignedLMDirectory.connect('validInputChanged(bool)', self.onSelect)
     self.applyButton.connect('clicked(bool)', self.onApplyButton)
-    
+
     ################################### Mean Tab ###################################
     # Layout within Mean tab
     MeanWidget=ctk.ctkCollapsibleButton()
     MeanWidgetLayout = qt.QFormLayout(MeanWidget)
     MeanWidget.text = "Generate mean mesh"
     generateMeanTabLayout.addRow(MeanWidget)
-    
+
     #
     # Select aligned mesh directory
     #
@@ -161,7 +161,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.meanMeshDirectory.filters = ctk.ctkPathLineEdit.Dirs
     self.meanMeshDirectory.setToolTip( "Select directory for aligned meshes: " )
     MeanWidgetLayout.addRow("Aligned mesh directory: ", self.meanMeshDirectory)
-    
+
     #
     # Select aligned landmark directory
     #
@@ -172,12 +172,12 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
 
     #
     # Select output directory
-    #  
+    #
     self.meanOutputDirectory=ctk.ctkPathLineEdit()
     self.meanOutputDirectory.filters = ctk.ctkPathLineEdit.Dirs
     self.meanOutputDirectory.setToolTip( "Select directory for mean output" )
     MeanWidgetLayout.addRow("Mean output directory: ", self.meanOutputDirectory)
-    
+
     #
     # Generate mean button
     #
@@ -185,7 +185,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.generateMeanButton.toolTip = "Generate mean template from aligned subjects"
     self.generateMeanButton.enabled = False
     MeanWidgetLayout.addRow(self.generateMeanButton)
-    
+
     #
     # connections
     #
@@ -193,14 +193,14 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.meanLMDirectory.connect('validInputChanged(bool)', self.onMeanSelect)
     self.meanOutputDirectory.connect('validInputChanged(bool)', self.onMeanSelect)
     self.generateMeanButton.connect('clicked(bool)', self.onGenerateMean)
-    
+
     ################################### DeCA Tab ###################################
     # Layout within the DeCA tab
     DeCAWidget=ctk.ctkCollapsibleButton()
     DeCAWidgetLayout = qt.QFormLayout(DeCAWidget)
     DeCAWidget.text = "Dense Correspondence I/0"
     DeCATabLayout.addRow(DeCAWidget)
-    
+
     #
     # Select base mesh
     #
@@ -208,7 +208,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.DCBaseModelSelector.filters  = ctk.ctkPathLineEdit().Files
     self.DCBaseModelSelector.nameFilters=["Model (*.ply *.stl *.obj *.vtk *.vtp)"]
     DeCAWidgetLayout.addRow("Base mesh: ", self.DCBaseModelSelector)
-    
+
     #
     # Select base landmarks
     #
@@ -216,31 +216,31 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.DCBaseLMSelector.filters  = ctk.ctkPathLineEdit().Files
     self.DCBaseLMSelector.nameFilters=["Point set (*.fcsv *.json *.mrk.json"]
     DeCAWidgetLayout.addRow("Base landmarks: ", self.DCBaseLMSelector)
-    
+
     #
     # Select rigidly aligned meshes directory
-    #  
+    #
     self.DCMeshDirectory=ctk.ctkPathLineEdit()
     self.DCMeshDirectory.filters = ctk.ctkPathLineEdit.Dirs
     self.DCMeshDirectory.setToolTip( "Select directory containing rigidly aligned meshes" )
     DeCAWidgetLayout.addRow("Rigidly Aligned Mesh directory: ", self.DCMeshDirectory)
-    
+
     #
     # Select rigidly aligned landmark directory
-    #  
+    #
     self.DCLandmarkDirectory=ctk.ctkPathLineEdit()
     self.DCLandmarkDirectory.filters = ctk.ctkPathLineEdit.Dirs
     self.DCLandmarkDirectory.setToolTip( "Select directory containing rigidly aligned landmarks" )
     DeCAWidgetLayout.addRow("Rigidly Aligned Landmark directory: ", self.DCLandmarkDirectory)
-    
+
     #
     # Select DeCA output directory
-    #  
+    #
     self.DCOutputDirectory=ctk.ctkPathLineEdit()
     self.DCOutputDirectory.filters = ctk.ctkPathLineEdit.Dirs
     self.DCOutputDirectory.setToolTip( "Select directory for DeCA output" )
     DeCAWidgetLayout.addRow("DeCA output directory: ", self.DCOutputDirectory)
-    
+
     #
     # Use CPD registration
     #
@@ -249,7 +249,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.CPDCheckBox.enabled = False
     self.CPDCheckBox.setToolTip("If checked, DeCA will use CPD for point correspondences.")
     #DeCAWidgetLayout.addRow("Use CPD registration: ", self.CPDCheckBox)
-    
+
     #
     # Write directory for error checking
     #
@@ -257,7 +257,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.WriteErrorCheckBox.checked = False
     self.WriteErrorCheckBox.setToolTip("If checked, DeCA will create a directory of results for use in estimating point correspondence error.")
     DeCAWidgetLayout.addRow("Create output for error checking: ", self.WriteErrorCheckBox)
-    
+
     #
     # Write directory for error checking
     #
@@ -265,7 +265,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.WriteCorrPointsCheckBox.checked = False
     self.WriteCorrPointsCheckBox.setToolTip("If checked, DeCA will write out corresponding meshes.")
     #DeCAWidgetLayout.addRow("Write out point correspondences: ", self.WriteCorrPointsCheckBox)
-    
+
     #
     # Select Analysis Type
     #
@@ -274,7 +274,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     DeCAWidgetLayout.addRow("Shape analysis: ", self.analysisTypeShape)
     self.analysisTypeSymmetry=qt.QRadioButton()
     DeCAWidgetLayout.addRow("Symmetry analysis: ", self.analysisTypeSymmetry)
-    
+
     #
     # Hidden symmetry options
     self.symmetryCollapsibleButton = ctk.ctkCollapsibleButton()
@@ -283,19 +283,19 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.symmetryCollapsibleButton.enabled = False
     DeCAWidgetLayout.addRow(self.symmetryCollapsibleButton)
     symmetryOptionLayout = qt.QFormLayout(self.symmetryCollapsibleButton)
-    
+
     self.mirrorMeshSelector = ctk.ctkPathLineEdit()
     self.mirrorMeshSelector.filters  = ctk.ctkPathLineEdit().Dirs
     self.mirrorMeshSelector.enabled = False
     self.mirrorMeshSelector.setToolTip( "Select directory with mirrored mesh data" )
     symmetryOptionLayout.addRow("Mirror mesh directory: ", self.mirrorMeshSelector)
- 
+
     self.mirrorLMSelector = ctk.ctkPathLineEdit()
     self.mirrorLMSelector.filters  = ctk.ctkPathLineEdit().Dirs
     self.mirrorLMSelector.enabled = False
     self.mirrorLMSelector.setToolTip( "Select directory with mirrored landmark data" )
     symmetryOptionLayout.addRow("Mirror landmark directory: ", self.mirrorLMSelector)
-    
+
     #
     # Run DeCA Button
     #
@@ -303,7 +303,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.DCApplyButton.toolTip = "Run non-rigid alignment"
     self.DCApplyButton.enabled = False
     DeCAWidgetLayout.addRow(self.DCApplyButton)
-    
+
     # Connections
     self.DCBaseModelSelector.connect('validInputChanged(bool)', self.onDCSelect)
     self.DCBaseLMSelector.connect('validInputChanged(bool)', self.onDCSelect)
@@ -315,14 +315,14 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.mirrorMeshSelector.connect('validInputChanged(bool)', self.onDCSelect)
     self.mirrorLMSelector.connect('validInputChanged(bool)', self.onDCSelect)
     self.DCApplyButton.connect('clicked(bool)', self.onDCApplyButton)
-    
+
     ################################### Visualize Tab ###################################
     # Layout within the tab
     visualizeWidget=ctk.ctkCollapsibleButton()
     visualizeWidgetLayout = qt.QFormLayout(visualizeWidget)
     visualizeWidget.text = "Visualize the output feature heat maps"
     visualizeTabLayout.addRow(visualizeWidget)
-    
+
     #
     # Select base mesh
     #
@@ -336,36 +336,36 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.meshSelect.showHidden = False
     self.meshSelect.setMRMLScene( slicer.mrmlScene )
     visualizeWidgetLayout.addRow("Result Model: ", self.meshSelect)
-    
+
     #
     # Select Subject ID
     #
     self.subjectIDBox=qt.QComboBox()
     self.subjectIDBox.enabled = False
     visualizeWidgetLayout.addRow("Subject ID: ", self.subjectIDBox)
-    
+
     # Connections
     self.meshSelect.connect("currentNodeChanged(vtkMRMLNode*)", self.onVisualizeMeshSelect)
     self.subjectIDBox.connect("currentIndexChanged(int)", self.onSubjectIDSelect)
-       
+
     # Add vertical spacer
     self.layout.addStretch(1)
-    
+
     ################################### Symmetry Tab ###################################
     # Layout within the tab
     symmetryWidget=ctk.ctkCollapsibleButton()
     symmetryWidgetLayout = qt.QFormLayout(symmetryWidget)
     symmetryWidget.text = "Generate mirrored data for point-wise symmetry analysis"
     symmetryTabLayout.addRow(symmetryWidget)
-    
+
     #
     # Select meshes directory
-    #  
+    #
     self.symMeshDirectory=ctk.ctkPathLineEdit()
     self.symMeshDirectory.filters = ctk.ctkPathLineEdit.Dirs
     self.symMeshDirectory.setToolTip( "Select directory containing aligned meshes" )
     symmetryWidgetLayout.addRow("Aligned mesh directory: ", self.symMeshDirectory)
-    
+
     #
     # Select landmarks directory
     #
@@ -373,7 +373,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.symLandmarkDirectory.filters = ctk.ctkPathLineEdit.Dirs
     self.symLandmarkDirectory.setToolTip( "Select directory containing aligned landmarks" )
     symmetryWidgetLayout.addRow("Aligned landmark directory: ", self.symLandmarkDirectory)
-    
+
     #
     # Select aligned mesh directory
     #
@@ -381,7 +381,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.mirrorMeshDirectory.filters = ctk.ctkPathLineEdit.Dirs
     self.mirrorMeshDirectory.setToolTip( "Select output directory for mirrored meshes: " )
     symmetryWidgetLayout.addRow("Ouput mirror mesh directory: ", self.mirrorMeshDirectory)
-    
+
     #
     # Select aligned landmark directory
     #
@@ -402,14 +402,14 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.zAxis=qt.QRadioButton()
     self.zAxis.setChecked(False)
     symmetryWidgetLayout.addRow('Z-Axis', self.zAxis)
-    
+
     #
     # Mirror Landmark Index
     #
     self.landmarkIndexText=qt.QLineEdit()
     self.landmarkIndexText.setToolTip("No spaces. Seperate numbers by commas.  Example:  2,1,3,5,4")
     symmetryWidgetLayout.addRow('Mirror landmark index', self.landmarkIndexText)
-    
+
     #
     # Apply Button
     #
@@ -417,21 +417,21 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.mirrorButton.toolTip = "Generate mirrored and aligned copies of models and landmarks"
     self.mirrorButton.enabled = False
     symmetryWidgetLayout.addRow(self.mirrorButton)
-    
+
     # connections
     self.symMeshDirectory.connect('validInputChanged(bool)', self.onMirrorSelect)
-    self.symLandmarkDirectory.connect('validInputChanged(bool)', self.onMirrorSelect) 
+    self.symLandmarkDirectory.connect('validInputChanged(bool)', self.onMirrorSelect)
     self.mirrorMeshDirectory.connect('validInputChanged(bool)', self.onMirrorSelect)
     self.mirrorLMDirectory.connect('validInputChanged(bool)', self.onMirrorSelect)
     self.mirrorButton.connect('clicked(bool)', self.onMirrorButton)
-    
+
     ################################### DeCAL Tab ###################################
     # Layout within the DeCA tab
     DeCALWidget=ctk.ctkCollapsibleButton()
     DeCALWidgetLayout = qt.QFormLayout(DeCALWidget)
     DeCALWidget.text = "Dense Correspondence Landmarking"
     DeCALTabLayout.addRow(DeCALWidget)
-    
+
     #
     # Select base mesh
     #
@@ -439,7 +439,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.DCLBaseModelSelector.filters  = ctk.ctkPathLineEdit().Files
     self.DCLBaseModelSelector.nameFilters=["Model (*.ply *.stl *.obj *.vtk *.vtp)"]
     DeCALWidgetLayout.addRow("Base mesh: ", self.DCLBaseModelSelector)
-    
+
     #
     # Select base landmarks
     #
@@ -447,31 +447,31 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.DCLBaseLMSelector.filters  = ctk.ctkPathLineEdit().Files
     self.DCLBaseLMSelector.nameFilters=["Point set (*.fcsv *.json *.mrk.json"]
     DeCALWidgetLayout.addRow("Base landmarks: ", self.DCLBaseLMSelector)
-    
+
     #
     # Select rigidly aligned meshes directory
-    #  
+    #
     self.DCLMeshDirectory=ctk.ctkPathLineEdit()
     self.DCLMeshDirectory.filters = ctk.ctkPathLineEdit.Dirs
     self.DCLMeshDirectory.setToolTip( "Select directory containing rigidly aligned meshes" )
     DeCALWidgetLayout.addRow("Rigidly Aligned Mesh directory: ", self.DCLMeshDirectory)
-    
+
     #
     # Select rigidly aligned landmark directory
-    #  
+    #
     self.DCLLandmarkDirectory=ctk.ctkPathLineEdit()
     self.DCLLandmarkDirectory.filters = ctk.ctkPathLineEdit.Dirs
     self.DCLLandmarkDirectory.setToolTip( "Select directory containing rigidly aligned landmarks" )
     DeCALWidgetLayout.addRow("Rigidly Aligned Landmark directory: ", self.DCLLandmarkDirectory)
-    
+
     #
     # Select DeCA output directory
-    #  
+    #
     self.DCLOutputDirectory=ctk.ctkPathLineEdit()
     self.DCLOutputDirectory.filters = ctk.ctkPathLineEdit.Dirs
     self.DCLOutputDirectory.setToolTip( "Select directory for DeCA output" )
     DeCALWidgetLayout.addRow("DeCA output directory: ", self.DCLOutputDirectory)
-    
+
     #
     # Set spacing tolerance
     #
@@ -482,7 +482,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.spacingTolerance.value = 4
     self.spacingTolerance.setToolTip("Set tolerance of spacing as a percentage of the image diagonal")
     DeCALWidgetLayout.addRow("Spacing tolerance: ", self.spacingTolerance)
-    
+
     #
     # Get Subsample Rate Button
     #
@@ -490,7 +490,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.getPointNumberButton.toolTip = "Output the number of points sampled on the template shape."
     self.getPointNumberButton.enabled = False
     DeCALWidgetLayout.addRow(self.getPointNumberButton)
-    
+
     #
     # Subsample Information
     #
@@ -498,7 +498,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.subsampleInfo.setPlaceholderText("Subsampling information")
     self.subsampleInfo.setReadOnly(True)
     DeCALWidgetLayout.addRow(self.subsampleInfo)
-    
+
     #
     # Apply Button
     #
@@ -506,20 +506,20 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.DCLApplyButton.toolTip = "Generate a set of corresponding landmarks"
     self.DCLApplyButton.enabled = False
     DeCALWidgetLayout.addRow(self.DCLApplyButton)
-    
+
     # connections
     self.DCLBaseModelSelector.connect('validInputChanged(bool)', self.testConnect)
-    self.DCLBaseLMSelector.connect('validInputChanged(bool)', self.onDCLSelect) 
+    self.DCLBaseLMSelector.connect('validInputChanged(bool)', self.onDCLSelect)
     self.DCLMeshDirectory.connect('validInputChanged(bool)', self.onDCLSelect)
     self.DCLLandmarkDirectory.connect('validInputChanged(bool)', self.onDCLSelect)
     self.DCLOutputDirectory.connect('validInputChanged(bool)', self.onDCLSelect)
     self.DCLApplyButton.connect('clicked(bool)', self.onDCLApplyButton)
     self.getPointNumberButton.connect('clicked(bool)', self.onGetPointNumberButton)
 
-### GUI SUpport Functions    
+### GUI SUpport Functions
   def testConnect(self):
-    print("Got it!!")  
-    
+    print("Got it!!")
+
   def onToggleAnalysis(self):
     if self.analysisTypeSymmetry.checked == True:
       self.mirrorMeshSelector.enabled = True
@@ -531,19 +531,19 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
       self.mirrorLMSelector.enabled = False
       self.symmetryCollapsibleButton.collapsed = True
       self.symmetryCollapsibleButton.enabled = False
-  
+
   def onSubjectIDSelect(self):
-    try:  
+    try:
       subjectID = self.subjectIDBox.currentText
       self.resultNode.GetDisplayNode().SetActiveScalarName(subjectID)
       self.resultNode.GetDisplayNode().SetAndObserveColorNodeID('vtkMRMLColorTableNodeFilePlasma.txt')
       print(subjectID)
     except:
       print("Error: No array found")
-    
+
   def onVisualizeMeshSelect(self):
     if bool(self.meshSelect.currentNode()):
-      self.resultNode = self.meshSelect.currentNode()        
+      self.resultNode = self.meshSelect.currentNode()
       self.resultNode.GetDisplayNode().SetVisibility(True)
       self.resultNode.GetDisplayNode().SetScalarVisibility(True)
       resultData = self.resultNode.GetPolyData().GetPointData()
@@ -556,76 +556,76 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
       else:
         self.subjectIDBox.clear()
         self.subjectIDBox.enabled = False
-        
+
   def cleanup(self):
     pass
-  
+
   def onSelect(self):
-    self.applyButton.enabled = bool (self.meshDirectory.currentPath and self.landmarkDirectory.currentPath and 
+    self.applyButton.enabled = bool (self.meshDirectory.currentPath and self.landmarkDirectory.currentPath and
       self.baseMeshSelector.currentPath and self.baseLMSelector.currentPath
       and self.alignedMeshDirectory.currentPath and self.alignedLMDirectory.currentPath)
-     
+
     self.meanMeshDirectory.currentPath = self.alignedMeshDirectory.currentPath
     self.meanLMDirectory.currentPath = self.alignedLMDirectory.currentPath
-    
+
     self.DCMeshDirectory.currentPath = self.alignedMeshDirectory.currentPath
     self.DCLandmarkDirectory.currentPath = self.alignedLMDirectory.currentPath
-  
+
   def onMirrorSelect(self):
-    self.mirrorButton.enabled = bool (self.symMeshDirectory.currentPath and self.symLandmarkDirectory.currentPath 
+    self.mirrorButton.enabled = bool (self.symMeshDirectory.currentPath and self.symLandmarkDirectory.currentPath
     and self.mirrorMeshDirectory.currentPath and self.mirrorLMDirectory.currentPath)
-      
+
   def onApplyButton(self):
     logic = DeCALogic()
-    logic.runAlign(self.baseMeshSelector.currentPath, self.baseLMSelector.currentPath, self.meshDirectory.currentPath, 
+    logic.runAlign(self.baseMeshSelector.currentPath, self.baseLMSelector.currentPath, self.meshDirectory.currentPath,
       self.landmarkDirectory.currentPath, self.alignedMeshDirectory.currentPath, self.alignedLMDirectory.currentPath)
-  
+
   def onMeanSelect(self):
     self.generateMeanButton.enabled = bool (self.meanMeshDirectory.currentPath and self.meanLMDirectory.currentPath and self.meanOutputDirectory)
-      
+
   def onGenerateMean(self):
     logic = DeCALogic()
     base, modelExt = os.path.splitext(self.baseMeshSelector.currentPath)
     logic.runMean(self.meanLMDirectory.currentPath, self.meanMeshDirectory.currentPath, modelExt, self.meanOutputDirectory.currentPath)
-  
+
   def onDCApplyButton(self):
     logic = DeCALogic()
     if self.analysisTypeShape.checked == True:
-      logic.runDCAlign(self.DCBaseModelSelector.currentPath, self.DCBaseLMSelector.currentPath, self.DCMeshDirectory.currentPath, 
+      logic.runDCAlign(self.DCBaseModelSelector.currentPath, self.DCBaseLMSelector.currentPath, self.DCMeshDirectory.currentPath,
       self.DCLandmarkDirectory.currentPath, self.DCOutputDirectory.currentPath, self.CPDCheckBox.checked, self.WriteErrorCheckBox.checked)
-    else: 
-      logic.runDCAlignSymmetric(self.DCBaseModelSelector.currentPath, self.DCBaseLMSelector.currentPath, self.DCMeshDirectory.currentPath, 
-      self.DCLandmarkDirectory.currentPath, self.mirrorMeshSelector.currentPath, self.mirrorLMSelector.currentPath, self.DCOutputDirectory.currentPath, 
+    else:
+      logic.runDCAlignSymmetric(self.DCBaseModelSelector.currentPath, self.DCBaseLMSelector.currentPath, self.DCMeshDirectory.currentPath,
+      self.DCLandmarkDirectory.currentPath, self.mirrorMeshSelector.currentPath, self.mirrorLMSelector.currentPath, self.DCOutputDirectory.currentPath,
       self.CPDCheckBox.checked, self.WriteErrorCheckBox.checked, self.WriteCorrPointsCheckBox.checked)
-      
+
   def onDCSelect(self):
     if self.analysisTypeShape.checked == True:
-      self.DCApplyButton.enabled = bool (self.DCMeshDirectory.currentPath and self.DCLandmarkDirectory.currentPath 
-      and self.DCOutputDirectory.currentPath and self.DCBaseModelSelector.currentPath and self.DCBaseLMSelector.currentPath) 
+      self.DCApplyButton.enabled = bool (self.DCMeshDirectory.currentPath and self.DCLandmarkDirectory.currentPath
+      and self.DCOutputDirectory.currentPath and self.DCBaseModelSelector.currentPath and self.DCBaseLMSelector.currentPath)
     else:
       self.DCApplyButton.enabled = bool (self.DCMeshDirectory.currentPath and self.DCLandmarkDirectory.currentPath
       and self.DCOutputDirectory.currentPath and self.DCBaseModelSelector.currentPath and self.DCBaseLMSelector.currentPath
-      and self.mirrorMeshSelector.currentPath and self.mirrorLMSelector.currentPath)   
-  
+      and self.mirrorMeshSelector.currentPath and self.mirrorLMSelector.currentPath)
+
   def onDCLSelect(self):
-    self.getPointNumberButton.enabled = bool (self.DCLMeshDirectory.currentPath and self.DCLLandmarkDirectory.currentPath 
-    and self.DCLOutputDirectory.currentPath and self.DCLBaseModelSelector.currentPath and self.DCLBaseLMSelector.currentPath) 
+    self.getPointNumberButton.enabled = bool (self.DCLMeshDirectory.currentPath and self.DCLLandmarkDirectory.currentPath
+    and self.DCLOutputDirectory.currentPath and self.DCLBaseModelSelector.currentPath and self.DCLBaseLMSelector.currentPath)
     print(bool (self.DCLMeshDirectory.currentPath ))
     print(bool (self.DCLLandmarkDirectory.currentPath) )
     print(bool (self.DCLOutputDirectory.currentPath ) )
     print(bool ( self.DCLBaseLMSelector.currentPath) )
-  
+
   def onGetPointNumberButton(self):
     logic = DeCALogic()
     self.baseNode, self.templateModel, pointNumber = logic.runCheckPoints(self.DCLBaseModelSelector.currentPath, self.spacingTolerance.value)
-    self.subsampleInfo.insertPlainText(f'The subsampled template has a total of {pointNumber} points. \n')  
+    self.subsampleInfo.insertPlainText(f'The subsampled template has a total of {pointNumber} points. \n')
     self.DCLApplyButton.enabled = True
-    
+
   def onDCLApplyButton(self):
     logic = DeCALogic()
-    logic.runDeCAL(self.baseNode, self.templateModel, self.DCLBaseLMSelector.currentPath, self.DCLMeshDirectory.currentPath, 
+    logic.runDeCAL(self.baseNode, self.templateModel, self.DCLBaseLMSelector.currentPath, self.DCLMeshDirectory.currentPath,
     self.DCLLandmarkDirectory.currentPath, self.DCLOutputDirectory.currentPath, self.spacingTolerance.value)
-     
+
   def onMirrorButton(self):
     logic = DeCALogic()
     axis = [1,1,1]
@@ -635,10 +635,10 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
       axis[1] = -1
     else:
       axis[2] = -1
-      
-    logic.runMirroring(self.symMeshDirectory.currentPath, self.symLandmarkDirectory.currentPath, self.mirrorMeshDirectory.currentPath, 
-      self.mirrorLMDirectory.currentPath, axis, self.landmarkIndexText.text)  
-      
+
+    logic.runMirroring(self.symMeshDirectory.currentPath, self.symLandmarkDirectory.currentPath, self.mirrorMeshDirectory.currentPath,
+      self.mirrorLMDirectory.currentPath, axis, self.landmarkIndexText.text)
+
 #
 # DeCALogic
 #
@@ -661,7 +661,7 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     templatePointNumber = templateModel.GetNumberOfPoints()
     #slicer.mrmlScene.RemoveNode(baseNode)
     return baseNode, templateModel, templatePointNumber
-    
+
   def runDeCAL(self, baseNode, templateModel, baseLMPath, meshDirectory, landmarkDirectory, outputDirectory, spacingPercentage):
     baseLandmarks=self.fiducialNodeToPolyData(baseLMPath).GetPoints()
     modelExt=['ply','stl','vtp']
@@ -669,11 +669,11 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     landmarks = self.importLandmarks(landmarkDirectory)
     self.outputDirectory = outputDirectory
     denseCorrespondenceGroup = self.denseCorrespondenceBaseMesh(landmarks, models, baseNode.GetPolyData(), baseLandmarks)
-    
+
     # get base mesh index
     indexArrayName = "indexArray"
     templateIndex = templateModel.GetPointData().GetArray(indexArrayName)
-    
+
     # saving point correspondences
     if(templateIndex):
       sampleNumber = denseCorrespondenceGroup.GetNumberOfBlocks()
@@ -681,23 +681,23 @@ class DeCALogic(ScriptedLoadableModuleLogic):
         alignedMesh = denseCorrespondenceGroup.GetBlock(i)
         alignedPointNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"alignedPoints")
         for j in range(templateIndex.GetNumberOfValues()):
-          baseIndex = templateIndex.GetValue(j)  
+          baseIndex = templateIndex.GetValue(j)
           alignedPoint = alignedMesh.GetPoint(baseIndex)
-          alignedPointNode.AddFiducialFromArray(alignedPoint)  
+          alignedPointNode.AddFiducialFromArray(alignedPoint)
         outputLMPath = os.path.join(outputDirectory, self.modelNames[i]+".json")
         slicer.util.saveNode(alignedPointNode, outputLMPath)
         slicer.mrmlScene.RemoveNode(alignedPointNode)
-        
-      # save base node correspondences 
+
+      # save base node correspondences
       basePointNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"basePoints")
       for j in range(templateIndex.GetNumberOfValues()):
-        baseIndex = templateIndex.GetValue(j) 
+        baseIndex = templateIndex.GetValue(j)
         basePoint = baseNode.GetPolyData().GetPoint(baseIndex)
         basePointNode.AddFiducialFromArray(basePoint)
       baseLMPath = os.path.join(outputDirectory, "baseModel.json")
       slicer.util.saveNode(basePointNode, baseLMPath)
       slicer.mrmlScene.RemoveNode(basePointNode)
-  
+
   def downsampleModel(self, model, spacingPercentage):
     points=model.GetPolyData()
     cleanFilter=vtk.vtkCleanPolyData()
@@ -706,25 +706,25 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     cleanFilter.SetInputData(points)
     cleanFilter.Update()
     return cleanFilter.GetOutput()
-        
-  def addIndexArray(self, mesh, arrayName):  
+
+  def addIndexArray(self, mesh, arrayName):
     # Array of original index values
     indexArray = vtk.vtkIntArray()
     indexArray.SetNumberOfComponents(1)
     indexArray.SetName(arrayName)
-    for i in range(mesh.GetPolyData().GetNumberOfPoints()):   
+    for i in range(mesh.GetPolyData().GetNumberOfPoints()):
       indexArray.InsertNextValue(i)
     mesh.GetPolyData().GetPointData().AddArray(indexArray)
-    
+
   def runMirroring(self, meshDirectory, lmDirectory, mirrorMeshDirectory, mirrorLMDirectory, mirrorAxis, mirrorIndexText):
     mirrorMatrix = vtk.vtkMatrix4x4()
     mirrorMatrix.SetElement(0, 0, mirrorAxis[0])
     mirrorMatrix.SetElement(1, 1, mirrorAxis[1])
     mirrorMatrix.SetElement(2, 2, mirrorAxis[2])
-    
+
     lmFileList = os.listdir(lmDirectory)
     point=[0,0,0]
-    
+
     #get order of mirrored sets
     if len(mirrorIndexText) != 0:
       mirrorIndexList=mirrorIndexText.split(",")
@@ -732,7 +732,7 @@ class DeCALogic(ScriptedLoadableModuleLogic):
       mirrorIndex=np.asarray(mirrorIndexList)
     else:
       print("Error: no landmark index for mirrored mesh")
-    
+
     for meshFileName in os.listdir(meshDirectory):
       if(not meshFileName.startswith(".")):
         meshName = os.path.splitext(meshFileName)[0]
@@ -747,58 +747,58 @@ class DeCALogic(ScriptedLoadableModuleLogic):
             currentMeshNode = slicer.util.loadModel(meshFilePath)
             lmFilePath = os.path.join(lmDirectory, lmFileName)
             currentLMNode = slicer.util.loadMarkups(lmFilePath)
-    
+
             targetPoints = vtk.vtkPoints()
-            for i in range(currentLMNode.GetNumberOfMarkups()):
-              currentLMNode.GetMarkupPoint(0,i,point)
+            for i in range(currentLMNode.GetNumberOfControlPoints()):
+              point = currentLMNode.GetNthControlPointPosition(i)
               targetPoints.InsertNextPoint(point)
-      
+
             mirrorTransform = vtk.vtkTransform()
             mirrorTransform.SetMatrix(mirrorMatrix)
             mirrorTransformNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode","Mirror")
             mirrorTransformNode.SetAndObserveTransformToParent(mirrorTransform)
- 
+
             # apply transform to the current surface mesh and landmarks
-            currentMeshNode.SetAndObserveTransformNodeID(mirrorTransformNode.GetID()) 
-            currentLMNode.SetAndObserveTransformNodeID(mirrorTransformNode.GetID())  
+            currentMeshNode.SetAndObserveTransformNodeID(mirrorTransformNode.GetID())
+            currentLMNode.SetAndObserveTransformNodeID(mirrorTransformNode.GetID())
             slicer.vtkSlicerTransformLogic().hardenTransform(currentMeshNode)
             slicer.vtkSlicerTransformLogic().hardenTransform(currentLMNode)
-            
+
             # apply rigid transformation
             sourcePoints = vtk.vtkPoints()
             mirrorLMNode =slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode",meshName)
-            for i in range(currentLMNode.GetNumberOfMarkups()):
-              currentLMNode.GetMarkupPoint(0,mirrorIndex[i],point)
+            for i in range(currentLMNode.GetNumberOfControlPoints()):
+              point = currentLMNode.GetNthControlPointPosition(mirrorIndex[i])
               mirrorLMNode.AddFiducialFromArray(point)
               sourcePoints.InsertNextPoint(point)
-              
+
             rigidTransform = vtk.vtkLandmarkTransform()
             rigidTransform.SetSourceLandmarks( sourcePoints )
             rigidTransform.SetTargetLandmarks( targetPoints )
             rigidTransform.SetModeToRigidBody()
             rigidTransformNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode","Rigid")
             rigidTransformNode.SetAndObserveTransformToParent(rigidTransform)
-            
-            currentMeshNode.SetAndObserveTransformNodeID(rigidTransformNode.GetID()) 
-            mirrorLMNode.SetAndObserveTransformNodeID(rigidTransformNode.GetID())  
+
+            currentMeshNode.SetAndObserveTransformNodeID(rigidTransformNode.GetID())
+            mirrorLMNode.SetAndObserveTransformNodeID(rigidTransformNode.GetID())
             slicer.vtkSlicerTransformLogic().hardenTransform(currentMeshNode)
             slicer.vtkSlicerTransformLogic().hardenTransform(mirrorLMNode)
-            
+
             # save output files
             outputMeshName = meshName + '_mirror.ply'
-            outputMeshPath = os.path.join(mirrorMeshDirectory, outputMeshName) 
+            outputMeshPath = os.path.join(mirrorMeshDirectory, outputMeshName)
             slicer.util.saveNode(currentMeshNode, outputMeshPath)
             outputLMName = meshName + '_mirror.mrk.json'
-            outputLMPath = os.path.join(mirrorLMDirectory, outputLMName) 
+            outputLMPath = os.path.join(mirrorLMDirectory, outputLMName)
             slicer.util.saveNode(mirrorLMNode, outputLMPath)
-            
+
             # clean up
             slicer.mrmlScene.RemoveNode(currentLMNode)
             slicer.mrmlScene.RemoveNode(currentMeshNode)
             slicer.mrmlScene.RemoveNode(mirrorTransformNode)
             slicer.mrmlScene.RemoveNode(rigidTransformNode)
             slicer.mrmlScene.RemoveNode(mirrorLMNode)
-    
+
   def runDCAlign(self, baseMeshPath, baseLMPath, meshDirectory, landmarkDirectory, outputDirectory, optionCPD, optionErrorOutput):
     if optionErrorOutput:
       self.errorCheckPath = os.path.join(outputDirectory, "errorChecking")
@@ -814,16 +814,16 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     self.outputDirectory = outputDirectory
     if not(optionCPD):
       denseCorrespondenceGroup = self.denseCorrespondenceBaseMesh(landmarks, models, baseMesh, baseLandmarks)
-    else: 
+    else:
       denseCorrespondenceGroup = self.denseCorrespondenceCPD(landmarks, models, baseMesh, baseLandmarks)
-      
+
     self.addMagnitudeFeature(denseCorrespondenceGroup, self.modelNames, baseMesh)
-    
+
     # save results to output directory
     outputModelName = 'decaResultModel.vtp'
-    outputModelPath = os.path.join(outputDirectory, outputModelName) 
+    outputModelPath = os.path.join(outputDirectory, outputModelName)
     slicer.util.saveNode(baseNode, outputModelPath)
-    
+
   def runDCAlignSymmetric(self, baseMeshPath, baseLMPath, meshDir, landmarkDir, mirrorMeshDir, mirrorLandmarkDir, outputDir, optionCPD, optionErrorOutput, optionPointOutput):
     if optionErrorOutput:
       self.errorCheckPath = os.path.join(outputDir, "errorChecking")
@@ -846,12 +846,12 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     else:
       denseCorrespondenceGroup = self.denseCorrespondenceCPD(landmarks, models, baseMesh, baseLandmarks)
       denseCorrespondenceGroupMirror = self.denseCorrespondenceCPD(mirrorLandmarks, mirrorModels, baseMesh, baseLandmarks)
-      
+
     self.addMagnitudeFeatureSymmetry(denseCorrespondenceGroup, denseCorrespondenceGroupMirror, self.modelNames, baseMesh)
 
     # save results to output directory
     outputModelName = 'decaSymmetryResultModel.vtp'
-    outputModelPath = os.path.join(outputDir, outputModelName) 
+    outputModelPath = os.path.join(outputDir, outputModelName)
     slicer.util.saveNode(baseNode, outputModelPath)
 
   def runMean(self, landmarkDirectory, meshDirectory, modelExt, outputDirectory):
@@ -872,72 +872,71 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     # save results to output directory
     # save results to output directory
     outputModelName = 'decaMeanModel.ply'
-    outputModelPath = os.path.join(outputDirectory, outputModelName) 
+    outputModelPath = os.path.join(outputDirectory, outputModelName)
     slicer.util.saveNode(averageModelNode, outputModelPath)
-    
+
     outputLMName = 'decaMeanModel.mrk.json'
-    outputLMPath = os.path.join(outputDirectory, outputLMName) 
+    outputLMPath = os.path.join(outputDirectory, outputLMName)
     slicer.util.saveNode(averageLandmarkNode, outputLMPath)
-    
+
   def runAlign(self, baseMeshPath, baseLMPath, meshDirectory, lmDirectory, ouputMeshDirectory, outputLMDirectory):
     targetPoints = vtk.vtkPoints()
     point=[0,0,0]
-    
+
     baseMeshNode = slicer.util.loadModel(baseMeshPath)
     baseLMNode = slicer.util.loadMarkups(baseLMPath)
     # Set up base points for transform
-    for i in range(baseLMNode.GetNumberOfFiducials()):
-      baseLMNode.GetMarkupPoint(0,i,point)
+    for i in range(baseLMNode.GetNumberOfControlPoints()):
+      point = baseLMNode.GetNthControlPointPosition(i)
       targetPoints.InsertNextPoint(point)
-    
+
     # Transform each subject to base
     for meshFileName in os.listdir(meshDirectory):
       if(not meshFileName.startswith(".")):
         lmFileList = os.listdir(lmDirectory)
         meshFilePath = os.path.join(meshDirectory, meshFileName)
-        regex = re.compile(r'\d+')
-        subjectID = [int(x) for x in regex.findall(meshFileName)][-1]
+        subjectID = os.path.splitext(meshFileName)[0]
         for lmFileName in lmFileList:
-          if subjectID == int(regex.findall(lmFileName)[-1]):
+          if subjectID in lmFileName:
             print(lmFileName + " found matching: " + meshFileName)
             # if mesh and lm file with same subject id exist, load into scene
             currentMeshNode = slicer.util.loadModel(meshFilePath)
             lmFilePath = os.path.join(lmDirectory, lmFileName)
             currentLMNode = slicer.util.loadMarkups(lmFilePath)
-            
+
             # set up transform between base lms and current lms
             sourcePoints = vtk.vtkPoints()
-            for i in range(currentLMNode.GetNumberOfMarkups()):
-              currentLMNode.GetMarkupPoint(0,i,point)
+            for i in range(currentLMNode.GetNumberOfControlPoints()):
+              point = currentLMNode.GetNthControlPointPosition(i)
               sourcePoints.InsertNextPoint(point)
-          
+
             transform = vtk.vtkLandmarkTransform()
             transform.SetSourceLandmarks( sourcePoints )
             transform.SetTargetLandmarks( targetPoints )
-            transform.SetModeToRigidBody()  
-            
+            transform.SetModeToRigidBody()
+
             transformNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode","Rigid")
             transformNode.SetAndObserveTransformToParent(transform)
-           
+
             # apply transform to the current surface mesh and landmarks
-            currentMeshNode.SetAndObserveTransformNodeID(transformNode.GetID()) 
-            currentLMNode.SetAndObserveTransformNodeID(transformNode.GetID())  
+            currentMeshNode.SetAndObserveTransformNodeID(transformNode.GetID())
+            currentLMNode.SetAndObserveTransformNodeID(transformNode.GetID())
             slicer.vtkSlicerTransformLogic().hardenTransform(currentMeshNode)
             slicer.vtkSlicerTransformLogic().hardenTransform(currentLMNode)
-            
+
             # save output files
             outputMeshName = meshFileName + '_align.ply'
-            outputMeshPath = os.path.join(ouputMeshDirectory, outputMeshName) 
+            outputMeshPath = os.path.join(ouputMeshDirectory, outputMeshName)
             slicer.util.saveNode(currentMeshNode, outputMeshPath)
             outputLMName = meshFileName + '_align.mrk.json'
-            outputLMPath = os.path.join(outputLMDirectory, outputLMName) 
+            outputLMPath = os.path.join(outputLMDirectory, outputLMName)
             slicer.util.saveNode(currentLMNode, outputLMPath)
-            
+
             # clean up
             slicer.mrmlScene.RemoveNode(currentLMNode)
             slicer.mrmlScene.RemoveNode(currentMeshNode)
-            slicer.mrmlScene.RemoveNode(transformNode)        
-          
+            slicer.mrmlScene.RemoveNode(transformNode)
+
   def distanceMatrix(self, a):
     """
     Computes the euclidean distance matrix for n points in a 3D space
@@ -949,13 +948,13 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     dy=fnx(a[:,1])
     dz=fnx(a[:,2])
     return (dx**2.0+dy**2.0+dz**2.0)**0.5
-  
+
   def numpyToFiducialNode(self, numpyArray, nodeName):
     fiducialNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',nodeName)
     for point in numpyArray:
-      fiducialNode.AddFiducialFromArray(point) 
+      fiducialNode.AddFiducialFromArray(point)
     return fiducialNode
-        
+
   def computeAverageLM(self, fiducialGroup):
     sampleNumber = fiducialGroup.GetNumberOfBlocks()
     pointNumber = fiducialGroup.GetBlock(0).GetNumberOfPoints()
@@ -967,8 +966,8 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     #Calculate mean point positions of aligned group
     averagePoints_np = np.mean(groupArray_np, axis=2)
     averageLMNode = self.numpyToFiducialNode(averagePoints_np, "MeanTemplateLM")
-    return averageLMNode  
-  
+    return averageLMNode
+
   def fiducialNodeToPolyData(self, path):
     point = [0,0,0]
     polydataPoints = vtk.vtkPolyData()
@@ -977,13 +976,13 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     if not success:
       print("Could not load landmarks: ", inputFilePath)
       return
-    for i in range(fiducialNode.GetNumberOfFiducials()):
-      fiducialNode.GetMarkupPoint(0,i,point)
-      points.InsertNextPoint(point)    
+    for i in range(fiducialNode.GetNumberOfControlPoints()):
+      point = fiducialNode.GetNthControlPointPosition(i)
+      points.InsertNextPoint(point)
     polydataPoints.SetPoints(points)
     slicer.mrmlScene.RemoveNode(fiducialNode)
     return polydataPoints
-      
+
   def importLandmarks(self, topDir):
     fiducialGroup = vtk.vtkMultiBlockDataGroupFilter()
     for file in sorted(os.listdir(topDir)):
@@ -995,7 +994,7 @@ class DeCALogic(ScriptedLoadableModuleLogic):
         fiducialGroup.AddInputData(polydataPoints)
     fiducialGroup.Update()
     return fiducialGroup.GetOutput()
-  
+
   def importMeshes(self, topDir, extensions):
       modelGroup = vtk.vtkMultiBlockDataGroupFilter()
       fileNameList = []
@@ -1011,12 +1010,12 @@ class DeCALogic(ScriptedLoadableModuleLogic):
           slicer.mrmlScene.RemoveNode(modelNode)
       modelGroup.Update()
       return fileNameList, modelGroup.GetOutput()
-      
+
   def procrustesImposition(self, originalLandmarks, sizeOption):
     procrustesFilter = vtk.vtkProcrustesAlignmentFilter()
     if(sizeOption):
       procrustesFilter.GetLandmarkTransform().SetModeToRigidBody()
-  
+
     procrustesFilter.SetInputData(originalLandmarks)
     procrustesFilter.Update()
     meanShape = procrustesFilter.GetMeanPoints()
@@ -1024,10 +1023,10 @@ class DeCALogic(ScriptedLoadableModuleLogic):
 
   def getClosestToMeanIndex(self, meanShape, alignedPoints):
     import operator
-    sampleNumber = alignedPoints.GetNumberOfBlocks() 
+    sampleNumber = alignedPoints.GetNumberOfBlocks()
     procrustesDistances = []
-      
-    for i in range(sampleNumber):      
+
+    for i in range(sampleNumber):
       alignedShape = alignedPoints.GetBlock(i)
       meanPoint = [0,0,0]
       alignedPoint = [0,0,0]
@@ -1036,15 +1035,15 @@ class DeCALogic(ScriptedLoadableModuleLogic):
         meanShape.GetPoint(j,meanPoint)
         alignedShape.GetPoint(j,alignedPoint)
         distance += np.sqrt(vtk.vtkMath.Distance2BetweenPoints(meanPoint,alignedPoint))
-        
+
       procrustesDistances.append(distance)
-    
+
     try:
       min_index, min_value = min(enumerate(procrustesDistances), key=operator.itemgetter(1))
       return min_index
     except:
       return 0
-    
+
   def denseCorrespondence(self, originalLandmarks, originalMeshes, writeErrorOption=False):
     meanShape, alignedPoints = self.procrustesImposition(originalLandmarks, False)
     sampleNumber = alignedPoints.GetNumberOfBlocks()
@@ -1054,20 +1053,20 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     baseMesh = originalMeshes.GetBlock(baseIndex)
     baseLandmarks = originalLandmarks.GetBlock(baseIndex).GetPoints()
     for i in range(sampleNumber):
-      correspondingMesh = self.denseSurfaceCorrespondencePair(originalMeshes.GetBlock(i), 
-      originalLandmarks.GetBlock(i).GetPoints(), alignedPoints.GetBlock(i).GetPoints(), 
+      correspondingMesh = self.denseSurfaceCorrespondencePair(originalMeshes.GetBlock(i),
+      originalLandmarks.GetBlock(i).GetPoints(), alignedPoints.GetBlock(i).GetPoints(),
       baseMesh, baseLandmarks, meanShape, i)
       denseCorrespondenceGroup.AddInputData(correspondingMesh)
-  
+
     denseCorrespondenceGroup.Update()
     return denseCorrespondenceGroup.GetOutput(), baseIndex
-  
+
   def denseCorrespondenceCPD(self, originalLandmarks, originalMeshes, baseMesh, baseLandmarks, writeErrorOption=False):
     meanShape, alignedPoints = self.procrustesImposition(originalLandmarks, False)
     sampleNumber = alignedPoints.GetNumberOfBlocks()
     denseCorrespondenceGroup = vtk.vtkMultiBlockDataGroupFilter()
-    
-    # assign parameters for CPD 
+
+    # assign parameters for CPD
     parameters = {
       "SpacingTolerance": .04,
       "CPDIterations": 100,
@@ -1075,10 +1074,10 @@ class DeCALogic(ScriptedLoadableModuleLogic):
       "alpha": 2,
       "beta": 2,
      }
-    
+
     for i in range(sampleNumber):
       correspondingPoints = self.runCPDRegistration(originalMeshes.GetBlock(i), baseMesh, parameters)
-      # convert to vtkPoints 
+      # convert to vtkPoints
       correspondingMesh = self.convertPointsToVTK(correspondingPoints)
       correspondingMesh.SetPolys(baseMesh.GetPolys())
       # convert to polydata
@@ -1089,19 +1088,19 @@ class DeCALogic(ScriptedLoadableModuleLogic):
         plyWriterSubject.SetFileName("/Users/sararolfe/Dropbox/SlicerWorkspace/SMwSML/Data/UBC/DECAOutCPD/" + str(i) + ".ply")
         plyWriterSubject.SetInputData(correspondingMesh)
         plyWriterSubject.Write()
-    
+
         plyWriterBase = vtk.vtkPLYWriter()
         plyWriterBase.SetFileName("/Users/sararolfe/Dropbox/SlicerWorkspace/SMwSML/Data/UBC/DECAOutCPD/base.ply")
         plyWriterBase.SetInputData(baseMesh)
         plyWriterBase.Write()
-  
+
     denseCorrespondenceGroup.Update()
     return denseCorrespondenceGroup.GetOutput()
-    
+
   def runCPDRegistration(self,sourceData, targetData, parameters):
     from open3d import geometry
     from open3d import utility
-    
+
     # Downsample meshes
     sourceFilter=vtk.vtkCleanPolyData()
     sourceFilter.SetTolerance(parameters["SpacingTolerance"])
@@ -1109,14 +1108,14 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     sourceFilter.Update()
     #sourceArray = sourceFilter.GetOutput().GetPoints().GetData()
     sourceArray = sourceData.GetPoints().GetData()
-    
+
     targetFilter=vtk.vtkCleanPolyData()
     targetFilter.SetTolerance(parameters["SpacingTolerance"])
     targetFilter.SetInputData(targetData)
     targetFilter.Update()
     #targetArray = targetFilter.GetOutput().GetPoints().GetData()
     targetArray = targetData.GetPoints().GetData()
-    
+
     # Convert to pointcloud for scaling
     sourceArray_np = vtk_np.vtk_to_numpy(sourceArray)
     targetArray_np = vtk_np.vtk_to_numpy(targetArray)
@@ -1136,72 +1135,72 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     outputCloud.points = utility.Vector3dVector(deformed_array)
     outputCloud.scale(cloudSize/25, center = False)
     return np.asarray(outputCloud.points)
-    
+
   def cpd_registration(self, targetArray, sourceArray, CPDIterations, CPDTolerence, alpha_parameter, beta_parameter):
     from pycpd import DeformableRegistration
     output = DeformableRegistration(**{'X': targetArray, 'Y': sourceArray,'max_iterations': CPDIterations, 'tolerance': CPDTolerence}, alpha = alpha_parameter, beta  = beta_parameter)
     return output
-    
+
   def denseCorrespondenceBaseMesh(self, originalLandmarks, originalMeshes, baseMesh, baseLandmarks):
     meanShape, alignedPoints = self.procrustesImposition(originalLandmarks, False)
     sampleNumber = alignedPoints.GetNumberOfBlocks()
     denseCorrespondenceGroup = vtk.vtkMultiBlockDataGroupFilter()
     for i in range(sampleNumber):
-      correspondingMesh = self.denseSurfaceCorrespondencePair(originalMeshes.GetBlock(i), 
-      originalLandmarks.GetBlock(i).GetPoints(), alignedPoints.GetBlock(i).GetPoints(), 
+      correspondingMesh = self.denseSurfaceCorrespondencePair(originalMeshes.GetBlock(i),
+      originalLandmarks.GetBlock(i).GetPoints(), alignedPoints.GetBlock(i).GetPoints(),
       baseMesh, baseLandmarks, meanShape, i)
       denseCorrespondenceGroup.AddInputData(correspondingMesh)
-  
+
     denseCorrespondenceGroup.Update()
     return denseCorrespondenceGroup.GetOutput()
-  
+
   def denseSurfaceCorrespondencePair(self, originalMesh, originalLandmarks, alignedLandmarks, baseMesh, baseLandmarks, meanShape, iteration):
     # TPS warp target and base mesh to meanshape
     meanTransform = vtk.vtkThinPlateSplineTransform()
     meanTransform.SetSourceLandmarks( originalLandmarks )
     meanTransform.SetTargetLandmarks( meanShape )
     meanTransform.SetBasisToR() # for 3D transform
-  
+
     meanTransformFilter = vtk.vtkTransformPolyDataFilter()
     meanTransformFilter.SetInputData(originalMesh)
     meanTransformFilter.SetTransform(meanTransform)
     meanTransformFilter.Update()
     meanWarpedMesh = meanTransformFilter.GetOutput()
-  
+
     meanTransformBase = vtk.vtkThinPlateSplineTransform()
     meanTransformBase.SetSourceLandmarks( baseLandmarks )
     meanTransformBase.SetTargetLandmarks( meanShape )
     meanTransformBase.SetBasisToR() # for 3D transform
-  
+
     meanTransformBaseFilter = vtk.vtkTransformPolyDataFilter()
     meanTransformBaseFilter.SetInputData(baseMesh)
     meanTransformBaseFilter.SetTransform(meanTransformBase)
-    meanTransformBaseFilter.Update()    
+    meanTransformBaseFilter.Update()
     meanWarpedBase = meanTransformBaseFilter.GetOutput()
-    
+
     # write ouput
     if hasattr(self,"errorCheckPath"):
       plyWriterSubject = vtk.vtkPLYWriter()
       print(self.modelNames)
-      print(iteration) 
+      print(iteration)
       plyName = "subject_" + self.modelNames[iteration] + ".ply"
-      plyPath = os.path.join(self.errorCheckPath, plyName) 
+      plyPath = os.path.join(self.errorCheckPath, plyName)
       plyWriterSubject.SetFileName(plyPath)
       plyWriterSubject.SetInputData(meanWarpedMesh)
       plyWriterSubject.Write()
-    
+
       plyWriterBase = vtk.vtkPLYWriter()
       plyName = "base.ply"
-      plyPath = os.path.join(self.errorCheckPath, plyName) 
+      plyPath = os.path.join(self.errorCheckPath, plyName)
       plyWriterBase.SetFileName(plyPath)
       plyWriterBase.SetInputData(meanWarpedBase)
       plyWriterBase.Write()
-    
-    # Dense correspondence 
+
+    # Dense correspondence
     cellLocator = vtk.vtkCellLocator()
     cellLocator.SetDataSet(meanWarpedMesh)
     cellLocator.BuildLocator()
-  
+
     point = [0,0,0]
     correspondingPoint = [0,0,0]
     correspondingPoints = vtk.vtkPoints()
@@ -1212,26 +1211,26 @@ class DeCALogic(ScriptedLoadableModuleLogic):
       meanWarpedBase.GetPoint(i,point)
       cellLocator.FindClosestPoint(point,correspondingPoint,cellId, subId, distance)
       correspondingPoints.InsertPoint(i,correspondingPoint)
-  
-    #Copy points into mesh with base connectivity  
+
+    #Copy points into mesh with base connectivity
     correspondingMesh = vtk.vtkPolyData()
     correspondingMesh.SetPoints(correspondingPoints)
     correspondingMesh.SetPolys(meanWarpedBase.GetPolys())
-  
+
     # Apply inverse warping
     inverseTransform = vtk.vtkThinPlateSplineTransform()
     inverseTransform.SetSourceLandmarks( meanShape )
     inverseTransform.SetTargetLandmarks( originalLandmarks )
     inverseTransform.SetBasisToR() # for 3D transform
-  
+
     inverseTransformFilter = vtk.vtkTransformPolyDataFilter()
     inverseTransformFilter.SetInputData(correspondingMesh)
     inverseTransformFilter.SetTransform(inverseTransform)
     inverseTransformFilter.Update()
-  
+
     return inverseTransformFilter.GetOutput()
 
-  def convertPointsToVTK(self, points): 
+  def convertPointsToVTK(self, points):
     array_vtk = vtk_np.numpy_to_vtk(points, deep=True, array_type=vtk.VTK_FLOAT)
     points_vtk = vtk.vtkPoints()
     points_vtk.SetData(array_vtk)
@@ -1243,26 +1242,26 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     sampleNumber = denseCorrespondenceGroup.GetNumberOfBlocks()
     pointNumber = denseCorrespondenceGroup.GetBlock(0).GetNumberOfPoints()
     groupArray_np = np.empty((pointNumber,3,sampleNumber))
-    
+
     # get base mesh as closest to the meanshape
     baseMesh = denseCorrespondenceGroup.GetBlock(baseIndex)
- 
+
      # get points as array
     for i in range(sampleNumber):
       alignedMesh = denseCorrespondenceGroup.GetBlock(i)
       alignedMesh_np = vtk_np.vtk_to_numpy(alignedMesh.GetPoints().GetData())
       groupArray_np[:,:,i] = alignedMesh_np
-  
+
     #Calculate mean point positions of aligned group
     averagePoints_np = np.mean(groupArray_np, axis=2)
     averagePointsPolydata = self.convertPointsToVTK(averagePoints_np)
-  
-    #Copy points into mesh with base connectivity  
+
+    #Copy points into mesh with base connectivity
     averageModel = vtk.vtkPolyData()
     averageModel.SetPoints(averagePointsPolydata.GetPoints())
-    averageModel.SetPolys(baseMesh.GetPolys())  
+    averageModel.SetPolys(baseMesh.GetPolys())
     return averageModel
-  
+
   def addMagnitudeFeature(self, denseCorrespondenceGroup, modelNameArray, model):
     sampleNumber = denseCorrespondenceGroup.GetNumberOfBlocks()
     pointNumber = denseCorrespondenceGroup.GetBlock(0).GetNumberOfPoints()
@@ -1270,10 +1269,10 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     magnitudeMean = vtk.vtkDoubleArray()
     magnitudeMean.SetNumberOfComponents(1)
     magnitudeMean.SetName("Magnitude Mean")
-    magnitudeSD = vtk.vtkDoubleArray() 
+    magnitudeSD = vtk.vtkDoubleArray()
     magnitudeSD.SetNumberOfComponents(1)
     magnitudeSD.SetName("Magnitude SD")
-    
+
      # get distance arrays
     for i in range(sampleNumber):
       alignedMesh = denseCorrespondenceGroup.GetBlock(i)
@@ -1286,18 +1285,18 @@ class DeCALogic(ScriptedLoadableModuleLogic):
         distance = np.sqrt(vtk.vtkMath.Distance2BetweenPoints(modelPoint,targetPoint))
         magnitudes.InsertNextValue(distance)
         statsArray[j,i]=distance
-      
+
       model.GetPointData().AddArray(magnitudes)
-    
+
     for i in range(pointNumber):
       pointMean = statsArray[i,:].mean()
       magnitudeMean.InsertNextValue(pointMean)
       pointSD = statsArray[i,:].std()
       magnitudeSD.InsertNextValue(pointSD)
-    
-    model.GetPointData().AddArray(magnitudeMean)  
-    model.GetPointData().AddArray(magnitudeSD) 
-      
+
+    model.GetPointData().AddArray(magnitudeMean)
+    model.GetPointData().AddArray(magnitudeSD)
+
   def addMagnitudeFeatureSymmetry(self, denseCorrespondenceGroup, denseCorrespondenceGroupMirror, modelNameArray, model):
     sampleNumber = denseCorrespondenceGroup.GetNumberOfBlocks()
     pointNumber = denseCorrespondenceGroup.GetBlock(0).GetNumberOfPoints()
@@ -1305,10 +1304,10 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     magnitudeMean = vtk.vtkDoubleArray()
     magnitudeMean.SetNumberOfComponents(1)
     magnitudeMean.SetName("Magnitude Mean")
-    magnitudeSD = vtk.vtkDoubleArray() 
+    magnitudeSD = vtk.vtkDoubleArray()
     magnitudeSD.SetNumberOfComponents(1)
     magnitudeSD.SetName("Magnitude SD")
-    
+
      # get distance arrays
     for i in range(sampleNumber):
       alignedMesh = denseCorrespondenceGroup.GetBlock(i)
@@ -1323,17 +1322,14 @@ class DeCALogic(ScriptedLoadableModuleLogic):
         distance = np.sqrt(vtk.vtkMath.Distance2BetweenPoints(targetPoint1,targetPoint2))
         magnitudes.InsertNextValue(distance)
         statsArray[j,i]=distance
-      
+
       model.GetPointData().AddArray(magnitudes)
-    
+
     for i in range(pointNumber):
       pointMean = statsArray[i,:].mean()
       magnitudeMean.InsertNextValue(pointMean)
       pointSD = statsArray[i,:].std()
       magnitudeSD.InsertNextValue(pointSD)
-    
-    model.GetPointData().AddArray(magnitudeMean)  
+
+    model.GetPointData().AddArray(magnitudeMean)
     model.GetPointData().AddArray(magnitudeSD)
-
-
-
