@@ -131,6 +131,14 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     alignWidgetLayout.addRow("Aligned landmark directory: ", self.alignedLMDirectory)
 
     #
+    # Remove scale option
+    #
+    self.removeScaleCheckBox = qt.QCheckBox()
+    self.removeScaleCheckBox.checked = False
+    self.removeScaleCheckBox.setToolTip("If checked, alignment will include isotropic scaling.")
+    alignWidgetLayout.addRow("Remove scale: ", self.removeScaleCheckBox)
+    
+    #
     # Apply Button
     #
     self.applyButton = qt.QPushButton("Run alignment")
@@ -578,7 +586,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
   def onApplyButton(self):
     logic = DeCALogic()
     logic.runAlign(self.baseMeshSelector.currentPath, self.baseLMSelector.currentPath, self.meshDirectory.currentPath,
-      self.landmarkDirectory.currentPath, self.alignedMeshDirectory.currentPath, self.alignedLMDirectory.currentPath)
+      self.landmarkDirectory.currentPath, self.alignedMeshDirectory.currentPath, self.alignedLMDirectory.currentPath, self.removeScaleCheckBox.checked)
 
   def onMeanSelect(self):
     self.generateMeanButton.enabled = bool (self.meanMeshDirectory.currentPath and self.meanLMDirectory.currentPath and self.meanOutputDirectory)
@@ -879,7 +887,7 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     outputLMPath = os.path.join(outputDirectory, outputLMName)
     slicer.util.saveNode(averageLandmarkNode, outputLMPath)
 
-  def runAlign(self, baseMeshPath, baseLMPath, meshDirectory, lmDirectory, ouputMeshDirectory, outputLMDirectory):
+  def runAlign(self, baseMeshPath, baseLMPath, meshDirectory, lmDirectory, ouputMeshDirectory, outputLMDirectory, removeScaleOption):
     targetPoints = vtk.vtkPoints()
     point=[0,0,0]
 
@@ -913,9 +921,12 @@ class DeCALogic(ScriptedLoadableModuleLogic):
             transform = vtk.vtkLandmarkTransform()
             transform.SetSourceLandmarks( sourcePoints )
             transform.SetTargetLandmarks( targetPoints )
-            transform.SetModeToRigidBody()
+            if not removeScaleOption:
+              transform.SetModeToRigidBody()
+            else:
+              transform.SetModeToSimilarity()
 
-            transformNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode","Rigid")
+            transformNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode","Alignment")
             transformNode.SetAndObserveTransformToParent(transform)
 
             # apply transform to the current surface mesh and landmarks
@@ -936,6 +947,8 @@ class DeCALogic(ScriptedLoadableModuleLogic):
             slicer.mrmlScene.RemoveNode(currentLMNode)
             slicer.mrmlScene.RemoveNode(currentMeshNode)
             slicer.mrmlScene.RemoveNode(transformNode)
+            slicer.mrmlScene.RemoveNode(baseMeshNode)
+            slicer.mrmlScene.RemoveNode(baseLMNode)
 
   def distanceMatrix(self, a):
     """
