@@ -43,10 +43,10 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
-  def onSelect(self):
-    self.applyButton.enabled = bool (self.meshDirectory.currentPath and self.landmarkDirectory.currentPath and
-      self.baseMeshSelector.currentNode() and self.baseLMSelector.currentNode() and self.baseSLMSelect.currentNode()
-      and self.outputDirectory.currentPath)
+  #def onSelect(self):
+  #  self.applyButton.enabled = bool (self.meshDirectory.currentPath and self.landmarkDirectory.currentPath and
+  #    self.baseMeshSelector.currentNode() and self.baseLMSelector.currentNode() and self.baseSLMSelect.currentNode()
+  #    and self.outputDirectory.currentPath)
 
   def setup(self):
     ScriptedLoadableModuleWidget.setup(self)
@@ -137,7 +137,28 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.removeScaleCheckBox.checked = False
     self.removeScaleCheckBox.setToolTip("If checked, alignment will include isotropic scaling.")
     alignWidgetLayout.addRow("Remove scale: ", self.removeScaleCheckBox)
-    
+
+    #
+    # Hidden semilandmark options
+    self.semilandmarkCollapsibleButton = ctk.ctkCollapsibleButton()
+    self.semilandmarkCollapsibleButton.text = "Semi-landmark Options"
+    self.semilandmarkCollapsibleButton.collapsed = True
+    self.semilandmarkCollapsibleButton.enabled = True
+    alignWidgetLayout.addRow(self.semilandmarkCollapsibleButton)
+    semilandmarkOptionLayout = qt.QFormLayout(self.semilandmarkCollapsibleButton)
+
+    self.semilandmarkSelector = ctk.ctkPathLineEdit()
+    self.semilandmarkSelector.filters  = ctk.ctkPathLineEdit().Dirs
+    self.semilandmarkSelector.enabled = True
+    self.semilandmarkSelector.setToolTip( "Select directory with semi-landmark files" )
+    semilandmarkOptionLayout.addRow("Semi-landmark directory: ", self.semilandmarkSelector)
+
+    self.alignedSemilandmarkSelector = ctk.ctkPathLineEdit()
+    self.alignedSemilandmarkSelector.filters  = ctk.ctkPathLineEdit().Dirs
+    self.alignedSemilandmarkSelector.enabled = True
+    self.alignedSemilandmarkSelector.setToolTip( "Select directory to output aligned semilandmark files" )
+    semilandmarkOptionLayout.addRow("Aligned semi-landmark directory: ", self.alignedSemilandmarkSelector)
+
     #
     # Apply Button
     #
@@ -147,13 +168,13 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     alignWidgetLayout.addRow(self.applyButton)
 
     # connections
-    self.baseMeshSelector.connect('validInputChanged(bool)', self.onSelect)
-    self.baseLMSelector.connect('validInputChanged(bool)', self.onSelect)
-    self.meshDirectory.connect('validInputChanged(bool)', self.onSelect)
-    self.landmarkDirectory.connect('validInputChanged(bool)', self.onSelect)
-    self.alignedMeshDirectory.connect('validInputChanged(bool)', self.onSelect)
-    self.alignedLMDirectory.connect('validInputChanged(bool)', self.onSelect)
-    self.applyButton.connect('clicked(bool)', self.onApplyButton)
+    self.baseMeshSelector.connect('validInputChanged(bool)', self.onSelectAlignPaths)
+    self.baseLMSelector.connect('validInputChanged(bool)', self.onSelectAlignPaths)
+    self.meshDirectory.connect('validInputChanged(bool)', self.onSelectAlignPaths)
+    self.landmarkDirectory.connect('validInputChanged(bool)', self.onSelectAlignPaths)
+    self.alignedMeshDirectory.connect('validInputChanged(bool)', self.onSelectAlignPaths)
+    self.alignedLMDirectory.connect('validInputChanged(bool)', self.onSelectAlignPaths)
+    self.applyButton.connect('clicked(bool)', self.onApplyAlignmentButton)
 
     ################################### Mean Tab ###################################
     # Layout within Mean tab
@@ -568,7 +589,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
   def cleanup(self):
     pass
 
-  def onSelect(self):
+  def onSelectAlignPaths(self):
     self.applyButton.enabled = bool (self.meshDirectory.currentPath and self.landmarkDirectory.currentPath and
       self.baseMeshSelector.currentPath and self.baseLMSelector.currentPath
       and self.alignedMeshDirectory.currentPath and self.alignedLMDirectory.currentPath)
@@ -583,10 +604,11 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.mirrorButton.enabled = bool (self.symMeshDirectory.currentPath and self.symLandmarkDirectory.currentPath
     and self.mirrorMeshDirectory.currentPath and self.mirrorLMDirectory.currentPath)
 
-  def onApplyButton(self):
+  def onApplyAlignmentButton(self):
     logic = DeCALogic()
     logic.runAlign(self.baseMeshSelector.currentPath, self.baseLMSelector.currentPath, self.meshDirectory.currentPath,
-      self.landmarkDirectory.currentPath, self.alignedMeshDirectory.currentPath, self.alignedLMDirectory.currentPath, self.removeScaleCheckBox.checked)
+      self.landmarkDirectory.currentPath, self.alignedMeshDirectory.currentPath, self.alignedLMDirectory.currentPath, self.removeScaleCheckBox.checked,
+      self.semilandmarkSelector.currentPath, self.alignedSemilandmarkSelector.currentPath)
 
   def onMeanSelect(self):
     self.generateMeanButton.enabled = bool (self.meanMeshDirectory.currentPath and self.meanLMDirectory.currentPath and self.meanOutputDirectory)
@@ -878,7 +900,6 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     averageLandmarkNode.GetDisplayNode().SetPointLabelsVisibility(False)
 
     # save results to output directory
-    # save results to output directory
     outputModelName = 'decaMeanModel.ply'
     outputModelPath = os.path.join(outputDirectory, outputModelName)
     slicer.util.saveNode(averageModelNode, outputModelPath)
@@ -887,10 +908,20 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     outputLMPath = os.path.join(outputDirectory, outputLMName)
     slicer.util.saveNode(averageLandmarkNode, outputLMPath)
 
-  def runAlign(self, baseMeshPath, baseLMPath, meshDirectory, lmDirectory, ouputMeshDirectory, outputLMDirectory, removeScaleOption):
+  def getLandmarkFileByID(self, lmDirectory, subjectID):
+    lmFileList = os.listdir(lmDirectory)
+    for lmFileName in lmFileList:
+      if subjectID in lmFileName:
+        print(lmFileName + " found matching: " + subjectID)
+        # if mesh and slm file with same subject id exist, load into scene
+        lmFilePath = os.path.join(lmDirectory, lmFileName)
+        currentLMNode = slicer.util.loadMarkups(lmFilePath)
+        return currentLMNode
+
+  def runAlign(self, baseMeshPath, baseLMPath, meshDirectory, lmDirectory, ouputMeshDirectory, outputLMDirectory, removeScaleOption, slmDirectory, outputSLMDirectory):
+    semilandmarkOption = bool(slmDirectory and outputSLMDirectory)
     targetPoints = vtk.vtkPoints()
     point=[0,0,0]
-
     baseMeshNode = slicer.util.loadModel(baseMeshPath)
     baseLMNode = slicer.util.loadMarkups(baseLMPath)
     # Set up base points for transform
@@ -904,51 +935,56 @@ class DeCALogic(ScriptedLoadableModuleLogic):
         lmFileList = os.listdir(lmDirectory)
         meshFilePath = os.path.join(meshDirectory, meshFileName)
         subjectID = os.path.splitext(meshFileName)[0]
-        for lmFileName in lmFileList:
-          if subjectID in lmFileName:
-            print(lmFileName + " found matching: " + meshFileName)
-            # if mesh and lm file with same subject id exist, load into scene
-            currentMeshNode = slicer.util.loadModel(meshFilePath)
-            lmFilePath = os.path.join(lmDirectory, lmFileName)
-            currentLMNode = slicer.util.loadMarkups(lmFilePath)
-
-            # set up transform between base lms and current lms
-            sourcePoints = vtk.vtkPoints()
-            for i in range(currentLMNode.GetNumberOfControlPoints()):
-              point = currentLMNode.GetNthControlPointPosition(i)
-              sourcePoints.InsertNextPoint(point)
-
+        currentLMNode = self.getLandmarkFileByID(lmDirectory, subjectID)
+        if currentLMNode :
+          currentMeshNode = slicer.util.loadModel(meshFilePath)
+          # set up transform between base lms and current lms
+          sourcePoints = vtk.vtkPoints()
+          for i in range(currentLMNode.GetNumberOfControlPoints()):
+            point = currentLMNode.GetNthControlPointPosition(i)
+            sourcePoints.InsertNextPoint(point)
             transform = vtk.vtkLandmarkTransform()
-            transform.SetSourceLandmarks( sourcePoints )
-            transform.SetTargetLandmarks( targetPoints )
-            if not removeScaleOption:
-              transform.SetModeToRigidBody()
-            else:
-              transform.SetModeToSimilarity()
+            transform.SetSourceLandmarks(sourcePoints)
+            transform.SetTargetLandmarks(targetPoints)
+          if not removeScaleOption:
+            transform.SetModeToRigidBody()
+          else:
+            transform.SetModeToSimilarity()
 
-            transformNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode","Alignment")
-            transformNode.SetAndObserveTransformToParent(transform)
+          transformNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode","Alignment")
+          transformNode.SetAndObserveTransformToParent(transform)
 
-            # apply transform to the current surface mesh and landmarks
-            currentMeshNode.SetAndObserveTransformNodeID(transformNode.GetID())
-            currentLMNode.SetAndObserveTransformNodeID(transformNode.GetID())
-            slicer.vtkSlicerTransformLogic().hardenTransform(currentMeshNode)
-            slicer.vtkSlicerTransformLogic().hardenTransform(currentLMNode)
+          # apply transform to the current surface mesh and landmarks
+          currentMeshNode.SetAndObserveTransformNodeID(transformNode.GetID())
+          currentLMNode.SetAndObserveTransformNodeID(transformNode.GetID())
+          slicer.vtkSlicerTransformLogic().hardenTransform(currentMeshNode)
+          slicer.vtkSlicerTransformLogic().hardenTransform(currentLMNode)
 
-            # save output files
-            outputMeshName = meshFileName + '_align.ply'
-            outputMeshPath = os.path.join(ouputMeshDirectory, outputMeshName)
-            slicer.util.saveNode(currentMeshNode, outputMeshPath)
-            outputLMName = meshFileName + '_align.mrk.json'
-            outputLMPath = os.path.join(outputLMDirectory, outputLMName)
-            slicer.util.saveNode(currentLMNode, outputLMPath)
-
-            # clean up
-            slicer.mrmlScene.RemoveNode(currentLMNode)
-            slicer.mrmlScene.RemoveNode(currentMeshNode)
-            slicer.mrmlScene.RemoveNode(transformNode)
-            slicer.mrmlScene.RemoveNode(baseMeshNode)
-            slicer.mrmlScene.RemoveNode(baseLMNode)
+          # save output files
+          outputMeshName = meshFileName + '_align.ply'
+          outputMeshPath = os.path.join(ouputMeshDirectory, outputMeshName)
+          slicer.util.saveNode(currentMeshNode, outputMeshPath)
+          outputLMName = meshFileName + '_align.mrk.json'
+          outputLMPath = os.path.join(outputLMDirectory, outputLMName)
+          slicer.util.saveNode(currentLMNode, outputLMPath)
+            
+          # optional semi-landmark alignment 
+          if semilandmarkOption :
+            currentSLMNode = self.getLandmarkFileByID(slmDirectory, subjectID)
+            if currentSLMNode :
+              currentSLMNode.SetAndObserveTransformNodeID(transformNode.GetID())
+              slicer.vtkSlicerTransformLogic().hardenTransform(currentSLMNode)
+              outputSLMName = meshFileName + '_align.mrk.json'
+              outputSLMPath = os.path.join(outputSLMDirectory, outputSLMName)
+              slicer.util.saveNode(currentSLMNode, outputSLMPath)
+              slicer.mrmlScene.RemoveNode(currentSLMNode)
+          
+          # clean up
+          slicer.mrmlScene.RemoveNode(currentLMNode)
+          slicer.mrmlScene.RemoveNode(currentMeshNode)
+          slicer.mrmlScene.RemoveNode(transformNode)
+          slicer.mrmlScene.RemoveNode(baseMeshNode)
+          slicer.mrmlScene.RemoveNode(baseLMNode)
 
   def distanceMatrix(self, a):
     """
