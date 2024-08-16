@@ -7,7 +7,7 @@ import fnmatch
 import  numpy as np
 import random
 import math
-
+from pathlib import Path
 import re
 import csv
 import vtk.util.numpy_support as vtk_np
@@ -440,6 +440,32 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     symmetryWidgetLayout.addRow('Mirror landmark index', self.landmarkIndexText)
 
     #
+    # Hidden semilandmark options
+    #
+    self.semilandmarkMirrorCollapsibleButton = ctk.ctkCollapsibleButton()
+    self.semilandmarkMirrorCollapsibleButton.text = "Semi-landmark Options"
+    self.semilandmarkMirrorCollapsibleButton.collapsed = True
+    self.semilandmarkMirrorCollapsibleButton.enabled = True
+    symmetryWidgetLayout.addRow(self.semilandmarkMirrorCollapsibleButton)
+    semilandmarkMirrorOptionLayout = qt.QFormLayout(self.semilandmarkMirrorCollapsibleButton)
+
+    self.semilandmarkMirrorSelector = ctk.ctkPathLineEdit()
+    self.semilandmarkMirrorSelector.filters  = ctk.ctkPathLineEdit().Dirs
+    self.semilandmarkMirrorSelector.enabled = True
+    self.semilandmarkMirrorSelector.setToolTip( "Select directory with semi-landmark files" )
+    semilandmarkMirrorOptionLayout.addRow("Semi-landmark directory: ", self.semilandmarkMirrorSelector)
+
+    self.alignedSemilandmarkMirrorSelector = ctk.ctkPathLineEdit()
+    self.alignedSemilandmarkMirrorSelector.filters  = ctk.ctkPathLineEdit().Dirs
+    self.alignedSemilandmarkMirrorSelector.enabled = True
+    self.alignedSemilandmarkMirrorSelector.setToolTip( "Select directory to output aligned semilandmark files" )
+    semilandmarkMirrorOptionLayout.addRow("Mirrored semi-landmark directory: ", self.alignedSemilandmarkMirrorSelector)
+    
+    self.semilandmarkIndexMirrorText=qt.QLineEdit()
+    self.semilandmarkIndexMirrorText.setToolTip("No spaces. Seperate numbers by commas.  Example:  2,1,3,5,4")
+    semilandmarkMirrorOptionLayout.addRow('Mirror semi-landmark index', self.semilandmarkIndexMirrorText)
+    
+    #
     # Apply Button
     #
     self.mirrorButton = qt.QPushButton("Mirror")
@@ -667,7 +693,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
       axis[2] = -1
 
     logic.runMirroring(self.symMeshDirectory.currentPath, self.symLandmarkDirectory.currentPath, self.mirrorMeshDirectory.currentPath,
-      self.mirrorLMDirectory.currentPath, axis, self.landmarkIndexText.text)
+      self.mirrorLMDirectory.currentPath, axis, self.landmarkIndexText.text, self.semilandmarkMirrorSelector.currentPath, self.alignedSemilandmarkMirrorSelector.currentPath, self.semilandmarkIndexMirrorText.text)
 
 #
 # DeCALogic
@@ -713,8 +739,8 @@ class DeCALogic(ScriptedLoadableModuleLogic):
         for j in range(templateIndex.GetNumberOfValues()):
           baseIndex = templateIndex.GetValue(j)
           alignedPoint = alignedMesh.GetPoint(baseIndex)
-          alignedPointNode.AddFiducialFromArray(alignedPoint)
-        outputLMPath = os.path.join(outputDirectory, self.modelNames[i]+".json")
+          alignedPointNode.AddControlPoint(alignedPoint)
+        outputLMPath = os.path.join(outputDirectory, self.modelNames[i]+".mrk.json")
         slicer.util.saveNode(alignedPointNode, outputLMPath)
         slicer.mrmlScene.RemoveNode(alignedPointNode)
 
@@ -723,8 +749,8 @@ class DeCALogic(ScriptedLoadableModuleLogic):
       for j in range(templateIndex.GetNumberOfValues()):
         baseIndex = templateIndex.GetValue(j)
         basePoint = baseNode.GetPolyData().GetPoint(baseIndex)
-        basePointNode.AddFiducialFromArray(basePoint)
-      baseLMPath = os.path.join(outputDirectory, "baseModel.json")
+        basePointNode.AddControlPoint(basePoint)
+      baseLMPath = os.path.join(outputDirectory, "baseModel.mrk.json")
       slicer.util.saveNode(basePointNode, baseLMPath)
       slicer.mrmlScene.RemoveNode(basePointNode)
 
@@ -746,7 +772,14 @@ class DeCALogic(ScriptedLoadableModuleLogic):
       indexArray.InsertNextValue(i)
     mesh.GetPolyData().GetPointData().AddArray(indexArray)
 
-  def runMirroring(self, meshDirectory, lmDirectory, mirrorMeshDirectory, mirrorLMDirectory, mirrorAxis, mirrorIndexText):
+  def computeNormals(self, inputModel): 
+    normals = vtk.vtkPolyDataNormals()
+    normals.SetInputData(inputModel.GetPolyData())
+    normals.SetAutoOrientNormals(True)
+    normals.Update()
+    inputModel.SetAndObservePolyData(normals.GetOutput())
+  
+  def runMirroring(self, meshDirectory, lmDirectory, mirrorMeshDirectory, mirrorLMDirectory, mirrorAxis, mirrorIndexText, slmDirectory, outputSLMDirectory, mirrorSLMIndexText):
     mirrorMatrix = vtk.vtkMatrix4x4()
     mirrorMatrix.SetElement(0, 0, mirrorAxis[0])
     mirrorMatrix.SetElement(1, 1, mirrorAxis[1])
@@ -758,76 +791,96 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     #get order of mirrored sets
     if len(mirrorIndexText) != 0:
       mirrorIndexList=mirrorIndexText.split(",")
-      mirrorIndexList=[np.int(x) for x in mirrorIndexList]
+      mirrorIndexList=[int(x) for x in mirrorIndexList]
       mirrorIndex=np.asarray(mirrorIndexList)
     else:
       print("Error: no landmark index for mirrored mesh")
+    
+    semilandmarkOption = bool(slmDirectory and outputSLMDirectory and (len(mirrorSLMIndexText) != 0 )) 
+    if semilandmarkOption:
+      mirrorSLMIndexList=mirrorSLMIndexText.split(",")
+      mirrorSLMIndexList=[int(x) for x in mirrorSLMIndexList]
+      mirrorSLMIndex=np.asarray(mirrorSLMIndexList)
 
     for meshFileName in os.listdir(meshDirectory):
       if(not meshFileName.startswith(".")):
-        meshName = os.path.splitext(meshFileName)[0]
         meshFilePath = os.path.join(meshDirectory, meshFileName)
-        regex = re.compile(r'\d+')
-        print("meshfile name: ", meshFileName)
-        subjectID = [int(x) for x in regex.findall(meshFileName)][-1]
-        for lmFileName in lmFileList:
-          if subjectID == int(regex.findall(lmFileName)[-1]):
-            print(lmFileName + " found matching: " + meshFileName)
-            # if mesh and lm file with same subject id exist, load into scene
-            currentMeshNode = slicer.util.loadModel(meshFilePath)
-            lmFilePath = os.path.join(lmDirectory, lmFileName)
-            currentLMNode = slicer.util.loadMarkups(lmFilePath)
+        currentMeshNode = slicer.util.loadModel(meshFilePath)
+        subjectID = os.path.splitext(meshFileName)[0]
+        currentLMNode = self.getLandmarkFileByID(lmDirectory, subjectID)
+        if currentLMNode:
+          lmFilePath = os.path.join(lmDirectory, subjectID)
+          targetPoints = vtk.vtkPoints()
+          for i in range(currentLMNode.GetNumberOfControlPoints()):
+            point = currentLMNode.GetNthControlPointPosition(i)
+            targetPoints.InsertNextPoint(point)
 
-            targetPoints = vtk.vtkPoints()
-            for i in range(currentLMNode.GetNumberOfControlPoints()):
-              point = currentLMNode.GetNthControlPointPosition(i)
-              targetPoints.InsertNextPoint(point)
+          mirrorTransform = vtk.vtkTransform()
+          mirrorTransform.SetMatrix(mirrorMatrix)
+          mirrorTransformNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode","Mirror")
+          mirrorTransformNode.SetAndObserveTransformToParent(mirrorTransform)
 
-            mirrorTransform = vtk.vtkTransform()
-            mirrorTransform.SetMatrix(mirrorMatrix)
-            mirrorTransformNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode","Mirror")
-            mirrorTransformNode.SetAndObserveTransformToParent(mirrorTransform)
+          # apply transform to the current surface mesh and landmarks
+          currentMeshNode.SetAndObserveTransformNodeID(mirrorTransformNode.GetID())
+          currentLMNode.SetAndObserveTransformNodeID(mirrorTransformNode.GetID())
+          slicer.vtkSlicerTransformLogic().hardenTransform(currentMeshNode)
+          slicer.vtkSlicerTransformLogic().hardenTransform(currentLMNode)
 
-            # apply transform to the current surface mesh and landmarks
-            currentMeshNode.SetAndObserveTransformNodeID(mirrorTransformNode.GetID())
-            currentLMNode.SetAndObserveTransformNodeID(mirrorTransformNode.GetID())
-            slicer.vtkSlicerTransformLogic().hardenTransform(currentMeshNode)
-            slicer.vtkSlicerTransformLogic().hardenTransform(currentLMNode)
+          # apply rigid transformation
+          sourcePoints = vtk.vtkPoints()
+          mirrorLMNode =slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode",subjectID)
+          for i in range(currentLMNode.GetNumberOfControlPoints()):
+            point = currentLMNode.GetNthControlPointPosition(mirrorIndex[i])
+            mirrorLMNode.AddControlPoint(point)
+            sourcePoints.InsertNextPoint(point)
 
-            # apply rigid transformation
-            sourcePoints = vtk.vtkPoints()
-            mirrorLMNode =slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode",meshName)
-            for i in range(currentLMNode.GetNumberOfControlPoints()):
-              point = currentLMNode.GetNthControlPointPosition(mirrorIndex[i])
-              mirrorLMNode.AddFiducialFromArray(point)
-              sourcePoints.InsertNextPoint(point)
+          rigidTransform = vtk.vtkLandmarkTransform()
+          rigidTransform.SetSourceLandmarks( sourcePoints )
+          rigidTransform.SetTargetLandmarks( targetPoints )
+          rigidTransform.SetModeToRigidBody()
+          rigidTransformNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode","Rigid")
+          rigidTransformNode.SetAndObserveTransformToParent(rigidTransform)
 
-            rigidTransform = vtk.vtkLandmarkTransform()
-            rigidTransform.SetSourceLandmarks( sourcePoints )
-            rigidTransform.SetTargetLandmarks( targetPoints )
-            rigidTransform.SetModeToRigidBody()
-            rigidTransformNode=slicer.mrmlScene.AddNewNodeByClass("vtkMRMLTransformNode","Rigid")
-            rigidTransformNode.SetAndObserveTransformToParent(rigidTransform)
+          # compute normals
+          self.computeNormals(currentMeshNode)
 
-            currentMeshNode.SetAndObserveTransformNodeID(rigidTransformNode.GetID())
-            mirrorLMNode.SetAndObserveTransformNodeID(rigidTransformNode.GetID())
-            slicer.vtkSlicerTransformLogic().hardenTransform(currentMeshNode)
-            slicer.vtkSlicerTransformLogic().hardenTransform(mirrorLMNode)
+          currentMeshNode.SetAndObserveTransformNodeID(rigidTransformNode.GetID())
+          mirrorLMNode.SetAndObserveTransformNodeID(rigidTransformNode.GetID())
+          slicer.vtkSlicerTransformLogic().hardenTransform(currentMeshNode)
+          slicer.vtkSlicerTransformLogic().hardenTransform(mirrorLMNode)
 
-            # save output files
-            outputMeshName = meshName + '_mirror.ply'
-            outputMeshPath = os.path.join(mirrorMeshDirectory, outputMeshName)
-            slicer.util.saveNode(currentMeshNode, outputMeshPath)
-            outputLMName = meshName + '_mirror.mrk.json'
-            outputLMPath = os.path.join(mirrorLMDirectory, outputLMName)
-            slicer.util.saveNode(mirrorLMNode, outputLMPath)
+          # optional semi-landmark alignment 
+          if semilandmarkOption:
+            currentSLMNode = self.getLandmarkFileByID(slmDirectory, subjectID)
+            mirrorSLMNode =slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode",subjectID)
+            for i in range(currentSLMNode.GetNumberOfControlPoints()):
+              point = currentSLMNode.GetNthControlPointPosition(mirrorSLMIndex[i])
+              mirrorSLMNode.AddControlPoint(point)
+            if currentSLMNode :
+              currentSLMNode.SetAndObserveTransformNodeID(mirrorTransformNode.GetID())
+              slicer.vtkSlicerTransformLogic().hardenTransform(currentSLMNode)
+              currentSLMNode.SetAndObserveTransformNodeID(rigidTransformNode.GetID())
+              slicer.vtkSlicerTransformLogic().hardenTransform(currentSLMNode)
+              outputSLMName = subjectID + '_mirror.mrk.json'
+              outputSLMPath = os.path.join(outputSLMDirectory, outputSLMName)
+              slicer.util.saveNode(mirrorSLMNode, outputSLMPath)
+              slicer.mrmlScene.RemoveNode(currentSLMNode)
+              slicer.mrmlScene.RemoveNode(mirrorSLMNode)
+            
+          # save output files
+          outputMeshName = subjectID + '_mirror.ply'
+          outputMeshPath = os.path.join(mirrorMeshDirectory, outputMeshName)
+          slicer.util.saveNode(currentMeshNode, outputMeshPath)
+          outputLMName = subjectID + '_mirror.mrk.json'
+          outputLMPath = os.path.join(mirrorLMDirectory, outputLMName)
+          slicer.util.saveNode(mirrorLMNode, outputLMPath)
 
-            # clean up
-            slicer.mrmlScene.RemoveNode(currentLMNode)
-            slicer.mrmlScene.RemoveNode(currentMeshNode)
-            slicer.mrmlScene.RemoveNode(mirrorTransformNode)
-            slicer.mrmlScene.RemoveNode(rigidTransformNode)
-            slicer.mrmlScene.RemoveNode(mirrorLMNode)
+          # clean up
+          slicer.mrmlScene.RemoveNode(currentLMNode)
+          slicer.mrmlScene.RemoveNode(currentMeshNode)
+          slicer.mrmlScene.RemoveNode(mirrorTransformNode)
+          slicer.mrmlScene.RemoveNode(rigidTransformNode)
+          slicer.mrmlScene.RemoveNode(mirrorLMNode)
 
   def runDCAlign(self, baseMeshPath, baseLMPath, meshDirectory, landmarkDirectory, outputDirectory, optionCPD, optionErrorOutput):
     if optionErrorOutput:
@@ -908,15 +961,18 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     outputLMPath = os.path.join(outputDirectory, outputLMName)
     slicer.util.saveNode(averageLandmarkNode, outputLMPath)
 
-  def getLandmarkFileByID(self, lmDirectory, subjectID):
-    lmFileList = os.listdir(lmDirectory)
-    for lmFileName in lmFileList:
-      if subjectID in lmFileName:
-        print(lmFileName + " found matching: " + subjectID)
-        # if mesh and slm file with same subject id exist, load into scene
-        lmFilePath = os.path.join(lmDirectory, lmFileName)
-        currentLMNode = slicer.util.loadMarkups(lmFilePath)
-        return currentLMNode
+  def getLandmarkFileByID(self, directory, subjectID):
+    fileList = os.listdir(directory)
+    for fileName in fileList:
+      fileNameBase = Path(fileName)    
+      while fileNameBase.suffix in {'.fcsv', '.mrk', '.json'}:
+        fileNameBase = fileNameBase.with_suffix('')
+      if subjectID == str(fileNameBase):
+        #print(fileName + " found matching: " + subjectID)
+        # if file with this subject id exists, load into scene
+        filePath = os.path.join(directory, fileName)
+        currentNode = slicer.util.loadMarkups(filePath)
+        return currentNode
 
   def runAlign(self, baseMeshPath, baseLMPath, meshDirectory, lmDirectory, ouputMeshDirectory, outputLMDirectory, removeScaleOption, slmDirectory, outputSLMDirectory):
     semilandmarkOption = bool(slmDirectory and outputSLMDirectory)
@@ -935,9 +991,14 @@ class DeCALogic(ScriptedLoadableModuleLogic):
         lmFileList = os.listdir(lmDirectory)
         meshFilePath = os.path.join(meshDirectory, meshFileName)
         subjectID = os.path.splitext(meshFileName)[0]
+        #print("working on ", subjectID)
         currentLMNode = self.getLandmarkFileByID(lmDirectory, subjectID)
         if currentLMNode :
-          currentMeshNode = slicer.util.loadModel(meshFilePath)
+          try:
+            currentMeshNode = slicer.util.loadModel(meshFilePath)
+          except:
+            slicer.mrmlScene.RemoveNode(currentLMNode)
+            continue
           # set up transform between base lms and current lms
           sourcePoints = vtk.vtkPoints()
           for i in range(currentLMNode.GetNumberOfControlPoints()):
@@ -980,11 +1041,14 @@ class DeCALogic(ScriptedLoadableModuleLogic):
               slicer.mrmlScene.RemoveNode(currentSLMNode)
           
           # clean up
-          slicer.mrmlScene.RemoveNode(currentLMNode)
-          slicer.mrmlScene.RemoveNode(currentMeshNode)
-          slicer.mrmlScene.RemoveNode(transformNode)
-          slicer.mrmlScene.RemoveNode(baseMeshNode)
-          slicer.mrmlScene.RemoveNode(baseLMNode)
+          try:
+            slicer.mrmlScene.RemoveNode(currentLMNode)
+            slicer.mrmlScene.RemoveNode(currentMeshNode)
+            slicer.mrmlScene.RemoveNode(transformNode)
+            slicer.mrmlScene.RemoveNode(baseMeshNode)
+            slicer.mrmlScene.RemoveNode(baseLMNode)
+          except:
+            print(f"could not find nodes to remove for {subjectID}")
 
   def distanceMatrix(self, a):
     """
@@ -1001,7 +1065,7 @@ class DeCALogic(ScriptedLoadableModuleLogic):
   def numpyToFiducialNode(self, numpyArray, nodeName):
     fiducialNode = slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',nodeName)
     for point in numpyArray:
-      fiducialNode.AddFiducialFromArray(point)
+      fiducialNode.AddControlPoint(point)
     return fiducialNode
 
   def computeAverageLM(self, fiducialGroup):
