@@ -460,11 +460,11 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.alignedSemilandmarkMirrorSelector.enabled = True
     self.alignedSemilandmarkMirrorSelector.setToolTip( "Select directory to output aligned semilandmark files" )
     semilandmarkMirrorOptionLayout.addRow("Mirrored semi-landmark directory: ", self.alignedSemilandmarkMirrorSelector)
-    
+
     self.semilandmarkIndexMirrorText=qt.QLineEdit()
     self.semilandmarkIndexMirrorText.setToolTip("No spaces. Seperate numbers by commas.  Example:  2,1,3,5,4")
     semilandmarkMirrorOptionLayout.addRow('Mirror semi-landmark index', self.semilandmarkIndexMirrorText)
-    
+
     #
     # Apply Button
     #
@@ -772,13 +772,13 @@ class DeCALogic(ScriptedLoadableModuleLogic):
       indexArray.InsertNextValue(i)
     mesh.GetPolyData().GetPointData().AddArray(indexArray)
 
-  def computeNormals(self, inputModel): 
+  def computeNormals(self, inputModel):
     normals = vtk.vtkPolyDataNormals()
     normals.SetInputData(inputModel.GetPolyData())
     normals.SetAutoOrientNormals(True)
     normals.Update()
     inputModel.SetAndObservePolyData(normals.GetOutput())
-  
+
   def runMirroring(self, meshDirectory, lmDirectory, mirrorMeshDirectory, mirrorLMDirectory, mirrorAxis, mirrorIndexText, slmDirectory, outputSLMDirectory, mirrorSLMIndexText):
     mirrorMatrix = vtk.vtkMatrix4x4()
     mirrorMatrix.SetElement(0, 0, mirrorAxis[0])
@@ -795,8 +795,8 @@ class DeCALogic(ScriptedLoadableModuleLogic):
       mirrorIndex=np.asarray(mirrorIndexList)
     else:
       print("Error: no landmark index for mirrored mesh")
-    
-    semilandmarkOption = bool(slmDirectory and outputSLMDirectory and (len(mirrorSLMIndexText) != 0 )) 
+
+    semilandmarkOption = bool(slmDirectory and outputSLMDirectory and (len(mirrorSLMIndexText) != 0 ))
     if semilandmarkOption:
       mirrorSLMIndexList=mirrorSLMIndexText.split(",")
       mirrorSLMIndexList=[int(x) for x in mirrorSLMIndexList]
@@ -849,7 +849,7 @@ class DeCALogic(ScriptedLoadableModuleLogic):
           slicer.vtkSlicerTransformLogic().hardenTransform(currentMeshNode)
           slicer.vtkSlicerTransformLogic().hardenTransform(mirrorLMNode)
 
-          # optional semi-landmark alignment 
+          # optional semi-landmark alignment
           if semilandmarkOption:
             currentSLMNode = self.getLandmarkFileByID(slmDirectory, subjectID)
             mirrorSLMNode =slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode",subjectID)
@@ -866,7 +866,7 @@ class DeCALogic(ScriptedLoadableModuleLogic):
               slicer.util.saveNode(mirrorSLMNode, outputSLMPath)
               slicer.mrmlScene.RemoveNode(currentSLMNode)
               slicer.mrmlScene.RemoveNode(mirrorSLMNode)
-            
+
           # save output files
           outputMeshName = subjectID + '_mirror.ply'
           outputMeshPath = os.path.join(mirrorMeshDirectory, outputMeshName)
@@ -964,7 +964,7 @@ class DeCALogic(ScriptedLoadableModuleLogic):
   def getLandmarkFileByID(self, directory, subjectID):
     fileList = os.listdir(directory)
     for fileName in fileList:
-      fileNameBase = Path(fileName)    
+      fileNameBase = Path(fileName)
       while fileNameBase.suffix in {'.fcsv', '.mrk', '.json'}:
         fileNameBase = fileNameBase.with_suffix('')
       if subjectID == str(fileNameBase):
@@ -1022,24 +1022,24 @@ class DeCALogic(ScriptedLoadableModuleLogic):
           slicer.vtkSlicerTransformLogic().hardenTransform(currentLMNode)
 
           # save output files
-          outputMeshName = meshFileName + '_align.ply'
+          outputMeshName = subjectID + '_align.ply'
           outputMeshPath = os.path.join(ouputMeshDirectory, outputMeshName)
           slicer.util.saveNode(currentMeshNode, outputMeshPath)
-          outputLMName = meshFileName + '_align.mrk.json'
+          outputLMName = subjectID + '_align.mrk.json'
           outputLMPath = os.path.join(outputLMDirectory, outputLMName)
           slicer.util.saveNode(currentLMNode, outputLMPath)
-            
-          # optional semi-landmark alignment 
+
+          # optional semi-landmark alignment
           if semilandmarkOption :
             currentSLMNode = self.getLandmarkFileByID(slmDirectory, subjectID)
             if currentSLMNode :
               currentSLMNode.SetAndObserveTransformNodeID(transformNode.GetID())
               slicer.vtkSlicerTransformLogic().hardenTransform(currentSLMNode)
-              outputSLMName = meshFileName + '_align.mrk.json'
+              outputSLMName = subjectID + '_align.mrk.json'
               outputSLMPath = os.path.join(outputSLMDirectory, outputSLMName)
               slicer.util.saveNode(currentSLMNode, outputSLMPath)
               slicer.mrmlScene.RemoveNode(currentSLMNode)
-          
+
           # clean up
           try:
             slicer.mrmlScene.RemoveNode(currentLMNode)
