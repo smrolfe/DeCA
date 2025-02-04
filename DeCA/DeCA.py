@@ -12,7 +12,7 @@ import re
 import csv
 import vtk.util.numpy_support as vtk_np
 from pathlib import Path
-
+import shutil
 
 #
 # DeCA
@@ -251,34 +251,6 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     DeCALAtlasOptionLayout.addRow("Atlas landmarks: ", self.DCLBaseLMSelector)
 
     #
-    # Atlas information
-    #
-    self.atlasInfoCollapsibleButtonDCL = ctk.ctkCollapsibleButton()
-    self.atlasInfoCollapsibleButtonDCL.text = "Atlas Information"
-    self.atlasInfoCollapsibleButtonDCL.collapsed = True
-    self.atlasInfoCollapsibleButtonDCL.enabled = True
-    DeCALWidgetLayout.addRow(self.atlasInfoCollapsibleButtonDCL)
-    DeCALAtlasInfoLayout = qt.QFormLayout(self.atlasInfoCollapsibleButtonDCL)
-
-    # atlas model
-    self.atlasModelSelector = slicer.qMRMLNodeComboBox()
-    self.atlasModelSelector.nodeTypes = ("vtkMRMLModelNode", "")
-    self.atlasModelSelector.selectNodeUponCreation = False
-    self.atlasModelSelector.addEnabled=False
-    self.atlasModelSelector.removeEnabled=False
-    self.atlasModelSelector.setMRMLScene( slicer.mrmlScene )
-    DeCALAtlasInfoLayout.addRow("Atlas Model: ", self.atlasModelSelector)
-
-    # atlas landmarks
-    self.atlasLandmarkSelector = slicer.qMRMLNodeComboBox()
-    self.atlasLandmarkSelector.nodeTypes = ("vtkMRMLMarkupsFiducialNode", "")
-    self.atlasLandmarkSelector.selectNodeUponCreation = False
-    self.atlasLandmarkSelector.addEnabled=False
-    self.atlasLandmarkSelector.removeEnabled=False
-    self.atlasLandmarkSelector.setMRMLScene( slicer.mrmlScene )
-    DeCALAtlasInfoLayout.addRow("Atlas Model: ", self.atlasLandmarkSelector)
-
-    #
     # Select meshes directory
     #
     self.meshDirectoryDCL=ctk.ctkPathLineEdit()
@@ -316,7 +288,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     #
     # Generate Atlas Button
     #
-    self.getAtlasButton = qt.QPushButton("Generate atlas")
+    self.getAtlasButton = qt.QPushButton("Create\Load atlas")
     self.getAtlasButton.toolTip = "Generate a new atlas model and landmark set from data"
     self.getAtlasButton.enabled = False
     DeCALWidgetLayout.addRow(self.getAtlasButton)
@@ -418,7 +390,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     visualizeWidgetLayout.addRow("Subject ID: ", self.subjectIDBox)
 
   ################################### GUI SUpport Functions
-  def setUpDeCADir(self, outDir, logWindow, symmetryOption=False, errorDirectoryOption=False, DeCALOption=False):
+  def setUpDeCADir(self, outDir, logWindow, symmetryOption=False, errorDirectoryOption=False, DeCALOption=False, loadAtlasOption = False):
     dateTimeStamp = datetime.now().strftime('%Y_%m-%d_%H_%M_%S')
     outputFolderDC = os.path.join(outDir, dateTimeStamp)
     fileNameDictionary = {}
@@ -428,35 +400,34 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
       os.makedirs(alignedLMFolderDC)
       alignedModelFolderDC = os.path.join(outputFolderDC, "alignedModels")
       os.makedirs(alignedModelFolderDC)
-      tempLMFolderDC = os.path.join(outputFolderDC, "tempAlignedLMs")
-      os.makedirs(tempLMFolderDC)
-      tempModelFolderDC = os.path.join(outputFolderDC, "tempAlignedModels")
-      os.makedirs(tempModelFolderDC)
       # initialize the filename dictionary
       fileNameDictionary['output'] = str(outputFolderDC)
       fileNameDictionary['alignedLMs'] = str(alignedLMFolderDC)
       fileNameDictionary['alignedModels'] = str(alignedModelFolderDC)
-      fileNameDictionary['tempAlignedLMs'] = str(tempLMFolderDC)
-      fileNameDictionary['tempAlignedModels'] = str(tempModelFolderDC)
-      if(symmetryOption):
+      if not loadAtlasOption:
+        tempLMFolderDC = os.path.join(outputFolderDC, "tempAlignedLMs")
+        os.makedirs(tempLMFolderDC)
+        tempModelFolderDC = os.path.join(outputFolderDC, "tempAlignedModels")
+        os.makedirs(tempModelFolderDC)
+        fileNameDictionary['tempAlignedLMs'] = str(tempLMFolderDC)
+        fileNameDictionary['tempAlignedModels'] = str(tempModelFolderDC)
+      if symmetryOption:
         mirrorLMFolderDC = os.path.join(outputFolderDC, "mirrorLMs")
         os.makedirs(mirrorLMFolderDC)
         mirrorModelFolderDC = os.path.join(outputFolderDC, "mirrorModels")
         os.makedirs(mirrorModelFolderDC)
         fileNameDictionary['mirrorLMs'] = str(mirrorLMFolderDC)
         fileNameDictionary['mirrorModels'] = str(mirrorModelFolderDC)
-      if(errorDirectoryOption):
+      if errorDirectoryOption:
         errorCheckingFolderDC = os.path.join(outputFolderDC, "errorChecking")
         os.makedirs(errorCheckingFolderDC)
         fileNameDictionary['error'] = str(errorCheckingFolderDC)
-      logWindow.insertPlainText(f"Created output folders in {outputFolderDC} \n")
-      if(DeCALOption):
+      if DeCALOption:
         DeCALOutputFolder = os.path.join(outputFolderDC, "DeCALOutput")
         os.makedirs(DeCALOutputFolder)
         fileNameDictionary['DeCALOutput'] = str(DeCALOutputFolder)
     except:
       logging.debug('Result directory failed: Could not create output folder')
-      logWindow.insertPlainText(f"Could not create output folders in {outputFolderDC} \n")
     return fileNameDictionary
 
   def onToggleAnalysis(self):
@@ -547,19 +518,22 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
   def onGenerateAtlasButton(self):
     logic = DeCALogic()
     #set up output directory
-    self.folderNames = self.setUpDeCADir(self.DCLOutputDirectory.currentPath, self.logInfoDCL, False, False, True)
+    self.folderNames = self.setUpDeCADir(self.DCLOutputDirectory.currentPath, False, False, True, self.loadAtlasOptionDCL.checked)
     if self.folderNames == {}:
       return
     self.folderNames['originalLMs'] = self.landmarkDirectoryDCL.currentPath
     self.folderNames['originalModels'] = self.meshDirectoryDCL.currentPath
     if self.loadAtlasOptionDCL.checked:
-      templateModelPath = self.DCLBaseModelSelector.currentPath
       try:
-        templateModel = slicer.util.loadModel(templateModelPath)
-        templateLMPath = self.DCLBaseLMSelector.currentPath
-        templateLM = slicer.util.loadMarkups(templateLMPath)
+        atlasModelPath = self.DCLBaseModelSelector.currentPath
+        self.atlasModel = slicer.util.loadModel(atlasModelPath)
       except:
-        print("Can't load from: ", templateModelPath)
+        print("Can't load from: ", atlasModelPath)
+      try:
+        atlasLMPath = self.DCLBaseLMSelector.currentPath
+        self.atlasLMs = slicer.util.loadMarkups(atlasLMPath)
+      except:
+        print("Can't load from: ", atlasLMPath)
     else:
       closestToMeanLandmarkPath = logic.getClosestToMeanPath(self.folderNames['originalLMs'])
       tempBaseLMs = slicer.util.loadMarkups(os.path.join(self.folderNames['originalLMs'],closestToMeanLandmarkPath))
@@ -568,43 +542,39 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
         subjectID = subjectID.with_suffix('')
       self.logInfoDCL.insertPlainText(f"Closest sample to mean: {subjectID} \n")
       tempBaseModel = logic.getModelFileByID(self.folderNames['originalModels'], subjectID)
-      self.logInfoDCL.insertPlainText(f"Aligning to: {subjectID} \n")
+      self.logInfoDCL.insertPlainText(f"Rigid Alignment to: {subjectID} \n")
       removeScale = True
       logic.runAlign(tempBaseModel, tempBaseLMs, self.folderNames['originalModels'], self.folderNames['originalLMs'], self.folderNames['tempAlignedModels'], self.folderNames['tempAlignedLMs'], removeScale)
       self.logInfoDCL.insertPlainText(f"Generating the average template \n")
-      templateModel, templateLM = logic.runMean(self.folderNames['tempAlignedLMs'], self.folderNames['tempAlignedModels'])
+      self.atlasModel, self.atlasLMs = logic.runMean(self.folderNames['tempAlignedLMs'], self.folderNames['tempAlignedModels'])
       slicer.mrmlScene.RemoveNode(tempBaseModel)
       slicer.mrmlScene.RemoveNode(tempBaseLMs)
-    self.logInfoDCL.insertPlainText(f"Saving atlas to output folder \n")
-    templateModelPath = os.path.join(self.folderNames['output'], 'decaMeanModel.ply')
-    slicer.util.saveNode(templateModel, templateModelPath)
-    templateLMPath = os.path.join(self.folderNames['output'], 'decaMeanLM.mrk.json')
-    slicer.util.saveNode(templateLM, templateLMPath)
-    self.getPointNumberButton.enabled = True
-    self.atlasInfoCollapsibleButtonDCL.enabled = True
-    self.atlasModelSelector.setCurrentNode(templateModel)
-    self.atlasLandmarkSelector.setCurrentNode(templateLM)
+      shutil.rmtree(self.folderNames['tempAlignedModels'])
+      shutil.rmtree(self.folderNames['tempAlignedLMs'])
+    atlasModelPath = os.path.join(self.folderNames['output'], 'decaAtlasModel.ply')
+    self.logInfoDCL.insertPlainText(f"Saving atlas model to {atlasModelPath} \n")
+    slicer.util.saveNode(self.atlasModel, atlasModelPath)
+    atlasLMPath = os.path.join(self.folderNames['output'], 'decaAtlasLM.mrk.json')
+    self.logInfoDCL.insertPlainText(f"Saving atlas landmarks to {atlasLMPath} \n")
+    slicer.util.saveNode(self.atlasLMs, atlasLMPath)
     self.getPointNumberButton.enabled = True
 
   def onGetPointNumberButton(self):
     logic = DeCALogic()
-    atlasModel = self.atlasModelSelector.currentNode()
-    subsampledTemplate, pointNumber = logic.runCheckPoints(atlasModel, self.spacingTolerance.value)
+    subsampledTemplate, pointNumber = logic.runCheckPoints(self.atlasModel, self.spacingTolerance.value)
     self.logInfoDCL.insertPlainText(f'The subsampled template has a total of {pointNumber} points. \n')
     self.DCLApplyButton.enabled = True
 
   def onDCLApplyButton(self, ):
     logic = DeCALogic()
     # rigidly align to template
-    atlasModel = self.atlasModelSelector.currentNode()
-    atlasLMs = self.atlasLandmarkSelector.currentNode()
-    self.logInfoDCL.insertPlainText(f"Aligning to the template \n")
+    self.logInfoDCL.insertPlainText(f"Rigid alignment to the atlas \n")
     removeScale = True
-    logic.runAlign(atlasModel, atlasLMs, self.folderNames['tempAlignedModels'], self.folderNames['tempAlignedLMs'], 
+    logic.runAlign(self.atlasModel, self.atlasLMs, self.folderNames['originalModels'], self.folderNames['originalLMs'],
     self.folderNames['alignedModels'], self.folderNames['alignedLMs'], removeScale)
     # generate point correspondences
     self.logInfoDCL.insertPlainText(f"Calculating point correspondences \n")
-    logic.runDeCAL(atlasModel, atlasLMs, self.folderNames['alignedModels'],
+    logic.runDeCAL(self.atlasModel, self.atlasLMs, self.folderNames['alignedModels'],
     self.folderNames['alignedLMs'], self.folderNames['DeCALOutput'], self.spacingTolerance.value)
 
   def onMirrorButton(self):
@@ -640,14 +610,15 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     landmarkNames, landmarks = self.importLandmarks(landmarkDirectory)
     self.outputDirectory = outputDirectory
     denseCorrespondenceGroup = self.denseCorrespondenceBaseMesh(landmarks, models, baseNode.GetPolyData(), baseLandmarks)
-    # get downsampled template with index array 
+    # get downsampled template with index array
     indexArrayName = "indexArray"
     self.addIndexArray(baseNode, indexArrayName)
     templateModel = self.downsampleModel(baseNode, spacingPercentage)
-    templateIndex = baseNode.GetPolyData().GetPointData().GetArray(indexArrayName)
+    templateIndex = templateModel.GetPointData().GetArray(indexArrayName)
     # saving point correspondences
     if(templateIndex):
       sampleNumber = denseCorrespondenceGroup.GetNumberOfBlocks()
+      print("sample number:", sampleNumber)
       for i in range(sampleNumber):
         alignedMesh = denseCorrespondenceGroup.GetBlock(i)
         alignedPointNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"alignedPoints")
@@ -664,10 +635,9 @@ class DeCALogic(ScriptedLoadableModuleLogic):
         baseIndex = templateIndex.GetValue(j)
         basePoint = baseNode.GetPolyData().GetPoint(baseIndex)
         basePointNode.AddControlPoint(basePoint)
-      baseLMPath = os.path.join(outputDirectory, "baseModel.mrk.json")
-      print(f"saving: {baseLMPath}")
+      baseLMPath = os.path.join(outputDirectory, "atlas.mrk.json")
       slicer.util.saveNode(basePointNode, baseLMPath)
-      slicer.mrmlScene.RemoveNode(basePointNode)
+      #slicer.mrmlScene.RemoveNode(basePointNode)
     else:
       print("No index found")
 
@@ -1156,6 +1126,7 @@ class DeCALogic(ScriptedLoadableModuleLogic):
   def denseCorrespondenceBaseMesh(self, originalLandmarks, originalMeshes, baseMesh, baseLandmarks):
     meanShape, alignedPoints = self.procrustesImposition(originalLandmarks, False)
     sampleNumber = alignedPoints.GetNumberOfBlocks()
+    print("procrustes aligned samples: ", sampleNumber)
     denseCorrespondenceGroup = vtk.vtkMultiBlockDataGroupFilter()
     for i in range(sampleNumber):
       correspondingMesh = self.denseSurfaceCorrespondencePair(originalMeshes.GetBlock(i),
