@@ -58,9 +58,9 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     visualizeTab = qt.QWidget()
     visualizeTabLayout = qt.QFormLayout(visualizeTab)
 
-    tabsWidget.addTab(DeCATab, "DeCA")
+    #tabsWidget.addTab(DeCATab, "DeCA")
     tabsWidget.addTab(DeCALTab, "DeCAL")
-    tabsWidget.addTab(visualizeTab, "Visualize Results")
+    #tabsWidget.addTab(visualizeTab, "Visualize Results")
 
     self.layout.addWidget(tabsWidget)
 
@@ -317,18 +317,6 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.logInfoDCL.setReadOnly(True)
     DeCALWidgetLayout.addRow(self.logInfoDCL)
 
-    # connections
-    self.calculateAtlasOptionDCL.connect('toggled(bool)', self.onToggleAtlasDCL)
-    self.loadAtlasOptionDCL.connect('toggled(bool)', self.onToggleAtlasDCL)
-    self.DCLBaseModelSelector.connect('validInputChanged(bool)', self.onAtlasSelect)
-    self.DCLBaseLMSelector.connect('validInputChanged(bool)', self.onAtlasSelect)
-    self.meshDirectoryDCL.connect('validInputChanged(bool)', self.onAtlasSelect)
-    self.landmarkDirectoryDCL.connect('validInputChanged(bool)', self.onAtlasSelect)
-    self.DCLOutputDirectory.connect('validInputChanged(bool)', self.onAtlasSelect)
-    self.getAtlasButton.connect('clicked(bool)', self.onGenerateAtlasButton)
-    self.getPointNumberButton.connect('clicked(bool)', self.onGetPointNumberButton)
-    self.DCLApplyButton.connect('clicked(bool)', self.onDCLApplyButton)
-
     #
     # Subsetting menu
     #
@@ -354,12 +342,36 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     DeCALSubsetLayout.addRow("Atlas landmarks: ", self.pointSelection)
 
     #
+    # Select DeCAL output directory
+    #
+    self.DCLLandmarkDirectory=ctk.ctkPathLineEdit()
+    self.DCLLandmarkDirectory.filters = ctk.ctkPathLineEdit.Dirs
+    self.DCLLandmarkDirectory.setToolTip( "Select directory for DeCAL sampled landmarks to subset" )
+    DeCALSubsetLayout.addRow("DeCAL landmark directory: ", self.DCLLandmarkDirectory)
+
+    #
     # Apply Subsetting Button
     #
     self.subsetApplyButton = qt.QPushButton("Run subsetting")
     self.subsetApplyButton.toolTip = "Generate a subset of corresponding landmarks"
     self.subsetApplyButton.enabled = False
     DeCALWidgetLayout.addRow(self.subsetApplyButton)
+
+
+    # connections
+    self.calculateAtlasOptionDCL.connect('toggled(bool)', self.onToggleAtlasDCL)
+    self.loadAtlasOptionDCL.connect('toggled(bool)', self.onToggleAtlasDCL)
+    self.DCLBaseModelSelector.connect('validInputChanged(bool)', self.onAtlasSelect)
+    self.DCLBaseLMSelector.connect('validInputChanged(bool)', self.onAtlasSelect)
+    self.meshDirectoryDCL.connect('validInputChanged(bool)', self.onAtlasSelect)
+    self.landmarkDirectoryDCL.connect('validInputChanged(bool)', self.onAtlasSelect)
+    self.DCLOutputDirectory.connect('validInputChanged(bool)', self.onAtlasSelect)
+    self.getAtlasButton.connect('clicked(bool)', self.onGenerateAtlasButton)
+    self.getPointNumberButton.connect('clicked(bool)', self.onGetPointNumberButton)
+    self.DCLApplyButton.connect('clicked(bool)', self.onDCLApplyButton)
+    self.subsetApplyButton.connect('clicked(bool)', self.onSubsetApplyButton)
+    self.pointSelection.connect('currentNodeChanged(vtkMRMLNode*)', self.onPointSelectionSelect)
+    self.DCLLandmarkDirectory.connect('validInputChanged(bool)', self.onDCLLandmarkDirectorySelect)
 
     ################################### Visualize Tab ###################################
     # Layout within the tab
@@ -491,6 +503,12 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     inputPathsSelected = bool (self.meshDirectoryDCL.currentPath and self.landmarkDirectoryDCL.currentPath and self.DCLOutputDirectory.currentPath )
     self.getAtlasButton.enabled = bool( (atlasPathSelected or self.calculateAtlasOptionDC.checked) and inputPathsSelected )
 
+  def onPointSelectionSelect(self):
+    self.subsetApplyButton.enabled = bool(self.DCLLandmarkDirectory.currentPath and self.pointSelection.currentNode())
+
+  def onDCLLandmarkDirectorySelect(self):
+    self.subsetApplyButton.enabled = bool(self.DCLLandmarkDirectory.currentPath and self.pointSelection.currentNode())
+
   def onDCApplyButton(self):
     logic = DeCALogic()
     self.setUpDeCADir(self.outputDirectoryDC.currentPath, self.logInfoDC, self.removeScaleCheckBoxDC.checked, self.writeErrorCheckBox.checkedself.logInfoDC, )
@@ -565,7 +583,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.logInfoDCL.insertPlainText(f'The subsampled template has a total of {pointNumber} points. \n')
     self.DCLApplyButton.enabled = True
 
-  def onDCLApplyButton(self, ):
+  def onDCLApplyButton(self):
     logic = DeCALogic()
     # rigidly align to template
     self.logInfoDCL.insertPlainText(f"Rigid alignment to the atlas \n")
@@ -576,6 +594,14 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.logInfoDCL.insertPlainText(f"Calculating point correspondences \n")
     logic.runDeCAL(self.atlasModel, self.atlasLMs, self.folderNames['alignedModels'],
     self.folderNames['alignedLMs'], self.folderNames['DeCALOutput'], self.spacingTolerance.value)
+
+  def onSubsetApplyButton(self):
+    logic = DeCALogic()
+    topDir = os.path.dirname(self.DCLLandmarkDirectory.currentPath)
+    lmDirectorySubset = os.path.join(topDir, "DeCALSubset")
+    os.makedirs(lmDirectorySubset)
+    atlasNode = self.pointSelection.currentNode()
+    lmDirectorySubset = logic.runSubsetLandmarks(atlasNode, self.DCLLandmarkDirectory.currentPath, lmDirectorySubset)
 
   def onMirrorButton(self):
     logic = DeCALogic()
@@ -596,6 +622,19 @@ class DeCALogic(ScriptedLoadableModuleLogic):
     Uses ScriptedLoadableModuleLogic base class, available at:
     https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
     """
+  def runSubsetLandmarks(self, baseNode, lmDirectory, lmDirectorySubset):
+    deletionIndex = []
+    for i in range(baseNode.GetNumberOfControlPoints()):
+      if not baseNode.GetNthControlPointSelected(i):
+        deletionIndex.append(i)
+    for lmFileName in os.listdir(lmDirectory):
+      if(not lmFileName.startswith(".")):
+        currentLMNode = slicer.util.loadMarkups(os.path.join(lmDirectory, lmFileName))
+        for index in reversed(deletionIndex):
+          currentLMNode.RemoveNthControlPoint(index)
+      slicer.util.saveNode(currentLMNode, os.path.join(lmDirectorySubset, lmFileName))
+      slicer.mrmlScene.RemoveNode(currentLMNode)
+
   def runCheckPoints(self, atlasNode, spacingTolerance):
     spacingPercentage = spacingTolerance/100
     templateModel = self.downsampleModel(atlasNode, spacingPercentage)
