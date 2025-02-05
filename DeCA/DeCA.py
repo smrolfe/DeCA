@@ -215,12 +215,13 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     #
     # Select Atlas Type
     #
+    DCLAtlasButtonGroup = qt.QButtonGroup(DeCALWidget)
     self.calculateAtlasOptionDCL=qt.QRadioButton()
     self.calculateAtlasOptionDCL.setChecked(True)
+    DCLAtlasButtonGroup.addButton(self.calculateAtlasOptionDCL)
     self.loadAtlasOptionDCL=qt.QRadioButton()
-    DCAtlasButtonGroup = qt.QButtonGroup(DeCAWidget)
-    DCAtlasButtonGroup.addButton(self.calculateAtlasOptionDC)
-    DCAtlasButtonGroup.addButton(self.loadAtlasOptionDC)
+    self.loadAtlasOptionDCL.setChecked(False)
+    DCLAtlasButtonGroup.addButton(self.loadAtlasOptionDCL)
     DeCALWidgetLayout.addRow("Create atlas: ", self.calculateAtlasOptionDCL)
     DeCALWidgetLayout.addRow("Load atlas: ", self.loadAtlasOptionDCL)
 
@@ -355,8 +356,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.subsetApplyButton = qt.QPushButton("Run subsetting")
     self.subsetApplyButton.toolTip = "Generate a subset of corresponding landmarks"
     self.subsetApplyButton.enabled = False
-    DeCALWidgetLayout.addRow(self.subsetApplyButton)
-
+    DeCALSubsetLayout.addRow(self.subsetApplyButton)
 
     # connections
     self.calculateAtlasOptionDCL.connect('toggled(bool)', self.onToggleAtlasDCL)
@@ -402,7 +402,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     visualizeWidgetLayout.addRow("Subject ID: ", self.subjectIDBox)
 
   ################################### GUI SUpport Functions
-  def setUpDeCADir(self, outDir, logWindow, symmetryOption=False, errorDirectoryOption=False, DeCALOption=False, loadAtlasOption = False):
+  def setUpDeCADir(self, outDir, symmetryOption=False, errorDirectoryOption=False, DeCALOption=False, loadAtlasOption = False):
     dateTimeStamp = datetime.now().strftime('%Y_%m-%d_%H_%M_%S')
     outputFolderDC = os.path.join(outDir, dateTimeStamp)
     fileNameDictionary = {}
@@ -501,7 +501,7 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
   def onAtlasSelect(self):
     atlasPathSelected = bool (self.DCLBaseModelSelector.currentPath and self.DCLBaseLMSelector.currentPath )
     inputPathsSelected = bool (self.meshDirectoryDCL.currentPath and self.landmarkDirectoryDCL.currentPath and self.DCLOutputDirectory.currentPath )
-    self.getAtlasButton.enabled = bool( (atlasPathSelected or self.calculateAtlasOptionDC.checked) and inputPathsSelected )
+    self.getAtlasButton.enabled = bool( (atlasPathSelected or self.calculateAtlasOptionDCL.checked) and inputPathsSelected )
 
   def onPointSelectionSelect(self):
     self.subsetApplyButton.enabled = bool(self.DCLLandmarkDirectory.currentPath and self.pointSelection.currentNode())
@@ -592,8 +592,11 @@ class DeCAWidget(ScriptedLoadableModuleWidget):
     self.folderNames['alignedModels'], self.folderNames['alignedLMs'], removeScale)
     # generate point correspondences
     self.logInfoDCL.insertPlainText(f"Calculating point correspondences \n")
-    logic.runDeCAL(self.atlasModel, self.atlasLMs, self.folderNames['alignedModels'],
+    atlasDenseLandmarks = logic.runDeCAL(self.atlasModel, self.atlasLMs, self.folderNames['alignedModels'],
     self.folderNames['alignedLMs'], self.folderNames['DeCALOutput'], self.spacingTolerance.value)
+    # setup for optional subsetting
+    self.pointSelection.setCurrentNode(atlasDenseLandmarks)
+    self.DCLLandmarkDirectory.setCurrentPath(self.folderNames['DeCALOutput'])
 
   def onSubsetApplyButton(self):
     logic = DeCALogic()
@@ -669,7 +672,7 @@ class DeCALogic(ScriptedLoadableModuleLogic):
         slicer.util.saveNode(alignedPointNode, outputLMPath)
         slicer.mrmlScene.RemoveNode(alignedPointNode)
       # save base node correspondences
-      basePointNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"basePoints")
+      basePointNode= slicer.mrmlScene.AddNewNodeByClass('vtkMRMLMarkupsFiducialNode',"atlasLandmarks")
       for j in range(templateIndex.GetNumberOfValues()):
         baseIndex = templateIndex.GetValue(j)
         basePoint = baseNode.GetPolyData().GetPoint(baseIndex)
@@ -677,8 +680,10 @@ class DeCALogic(ScriptedLoadableModuleLogic):
       baseLMPath = os.path.join(outputDirectory, "atlas.mrk.json")
       slicer.util.saveNode(basePointNode, baseLMPath)
       #slicer.mrmlScene.RemoveNode(basePointNode)
+      return basePointNode
     else:
       print("No index found")
+      return None
 
   def downsampleModel(self, model, spacingPercentage):
     points=model.GetPolyData()
